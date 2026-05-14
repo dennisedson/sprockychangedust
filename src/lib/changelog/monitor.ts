@@ -1,6 +1,14 @@
 import { classifyChangelogEntry } from "@/lib/ai/classifyChangelog";
 import { fetchHubSpotChangelogFeed } from "@/lib/changelog/rss";
+import { dispatchImpactNotifications } from "@/lib/notifications/dispatch";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+
+type StoredChangelogEntryRow = {
+  id: string;
+  title: string;
+  link: string;
+  raw_content: string;
+};
 
 export async function runChangelogMonitor() {
   const supabase = createSupabaseAdminClient();
@@ -56,5 +64,61 @@ export async function runChangelogMonitor() {
     fetched: entries.length,
     analyzed: processed.length,
     analyzedEntryIds: processed,
+  };
+}
+
+export async function backfillStoredChangelogEntries(options: {
+  limit?: number;
+  dispatch?: boolean;
+} = {}) {
+  const supabase = createSupabaseAdminClient();
+  const { data: entries, error } = await supabase
+    .from("changelog_entries")
+    .select("id,title,link,raw_content")
+    .order("publication_date", { ascending: false })
+    .limit(options.limit || 20)
+    .returns<StoredChangelogEntryRow[]>();
+
+  if (error) {
+    throw error;
+  }
+
+  const analyzedEntryIds: string[] = [];
+  const dispatches = [];
+
+  for (const entry of entries) {
+    const classification = await classifyChangelogEntry({
+      title: entry.title,
+      content: entry.raw_content,
+      link: entry.link,
+    });
+    const { error: updateError } = await supabase
+      .from("changelog_entries")
+      .update({
+        status: "analyzed",
+        ai_summary: classification.summary,
+        ai_classification: classification.classification,
+        ai_severity_level: classification.severity,
+        migration_steps: classification.migrationSteps,
+        impacted_keywords: classification.impactedKeywords,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", entry.id);
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    analyzedEntryIds.push(entry.id);
+
+    if (options.dispatch) {
+      dispatches.push(await dispatchImpactNotifications(entry.id));
+    }
+  }
+
+  return {
+    analyzed: analyzedEntryIds.length,
+    analyzedEntryIds,
+    dispatches,
   };
 }

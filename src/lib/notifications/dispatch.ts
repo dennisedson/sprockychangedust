@@ -11,7 +11,10 @@ import {
   type RepositoryImpactAssessment,
   type RepositoryImpactInput,
 } from "@/lib/ai/repositoryImpact";
-import { recordTrackedIssue } from "@/lib/issues/trackedIssues";
+import {
+  listExistingOpenTrackedIssues,
+  recordTrackedIssue,
+} from "@/lib/issues/trackedIssues";
 import { sendImpactAlertEmail } from "@/lib/notifications/email";
 import { createImpactIssue } from "@/lib/notifications/githubIssue";
 import { getNotificationSettings } from "@/lib/notifications/settings";
@@ -183,6 +186,16 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
     }
 
     if (settings.notifyViaGithubIssue) {
+      const existingIssues = await listExistingOpenTrackedIssues({
+        changelogEntryId: entry.id,
+        repositoryIds: [repository.id],
+      });
+
+      if (existingIssues.length > 0) {
+        notifiedRepositories.push(repository.repo_name);
+        continue;
+      }
+
       const issue = await createImpactIssue({
         installationId: repository.installation_id,
         owner,

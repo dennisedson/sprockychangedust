@@ -35,7 +35,7 @@ export async function classifyChangelogEntry(input: {
     const response = await openai.responses.parse({
       model: getOpenAIModel(),
       instructions:
-        "Classify HubSpot developer changelog entries for app developers. Return focused JSON with classification, severity, summary, migrationSteps, and impactedKeywords. Keep impactedKeywords specific to product areas, APIs, endpoints, auth flows, SDKs, or CMS features named in the changelog.",
+        "Classify HubSpot developer changelog entries for app developers. Return focused JSON with classification, severity, summary, migrationSteps, and impactedKeywords. The summary must be one useful 18-35 word sentence that explains what changed and why developers may care; do not repeat or lightly rephrase the title. Keep impactedKeywords specific to product areas, APIs, endpoints, auth flows, SDKs, or CMS features named in the changelog.",
       input: JSON.stringify(input),
       text: {
         format: zodTextFormat(
@@ -52,7 +52,7 @@ export async function classifyChangelogEntry(input: {
       return heuristicClassification(input);
     }
 
-    return changelogClassificationSchema.parse(response.output_parsed);
+    return normalizeClassification(input, response.output_parsed);
   } catch (error) {
     console.error(error);
     return heuristicClassification(input);
@@ -75,10 +75,52 @@ function heuristicClassification(input: {
         ? "enhancement"
         : "informational",
     severity: isBreaking ? "red" : isWarning ? "amber" : "green",
-    summary: input.title,
+    summary: createFallbackSummary(input),
     migrationSteps: isBreaking ? ["Review the changelog and confirm affected API usage."] : [],
     impactedKeywords: extractKeywords(text),
   };
+}
+
+function normalizeClassification(
+  input: {
+    title: string;
+    content: string;
+    link: string;
+  },
+  classification: ChangelogClassification,
+) {
+  const summary = isTitleRepeat(input.title, classification.summary)
+    ? createFallbackSummary(input)
+    : classification.summary;
+
+  return changelogClassificationSchema.parse({
+    ...classification,
+    summary,
+  });
+}
+
+function createFallbackSummary(input: { title: string; content: string }) {
+  const cleanContent = input.content
+    .replace(/\s+/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+
+  if (!cleanContent || isTitleRepeat(input.title, cleanContent)) {
+    return `Review this HubSpot changelog entry for developer impact related to ${input.title}.`;
+  }
+
+  const sentenceMatch = cleanContent.match(/^.{80,220}?[.!?](?:\s|$)/);
+  const summary = sentenceMatch?.[0] || cleanContent.slice(0, 220);
+
+  return summary.trim();
+}
+
+function isTitleRepeat(title: string, summary: string) {
+  return normalizeText(title) === normalizeText(summary);
+}
+
+function normalizeText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 function extractKeywords(text: string) {
