@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { fetchRepositoryScanFiles } from "@/lib/github/repositories";
 import { scanRepositoryFiles } from "@/lib/scanner/scanRepositoryFiles";
 import type { RepositoryScanResult } from "@/lib/scanner/types";
@@ -29,9 +30,20 @@ export async function scanInstalledRepository(
   const [owner, repo] = repository.repo_name.split("/");
 
   if (!owner || !repo) {
-    const emptyResult = {
+    const emptyResult: RepositoryScanResult = {
       hasHubSpotUsage: false,
       signals: [],
+      manifest: {
+        platformVersions: [],
+        apiPaths: [],
+        apiVersionSegments: [],
+        sdkPackages: [],
+        sdkSymbols: [],
+        scopes: [],
+        fileMarkers: [],
+        productAreas: [],
+        evidence: [],
+      },
     };
 
     await saveRepositoryScanResult(repository.id, emptyResult);
@@ -137,14 +149,30 @@ async function scanRepositoryRows(repositories: InstalledRepositoryForScan[]) {
 
 async function saveRepositoryScanResult(repositoryId: string, result: RepositoryScanResult) {
   const supabase = createSupabaseAdminClient();
-  const { error } = await supabase
-    .from("installed_repositories")
-    .update({
-      has_hubspot_usage: result.hasHubSpotUsage,
-      latest_scan_signals: result.signals,
-      last_scanned_at: new Date().toISOString(),
-    })
-    .eq("id", repositoryId);
+  const [{ error }, { error: manifestError }] = await Promise.all([
+    supabase
+      .from("installed_repositories")
+      .update({
+        has_hubspot_usage: result.hasHubSpotUsage,
+        latest_scan_signals: result.signals,
+        last_scanned_at: new Date().toISOString(),
+      })
+      .eq("id", repositoryId),
+    supabase.from("repository_manifests").upsert({
+      installed_repository_id: repositoryId,
+      manifest_hash: hashManifest(result.manifest),
+      platform_versions: result.manifest.platformVersions,
+      api_paths: result.manifest.apiPaths,
+      api_version_segments: result.manifest.apiVersionSegments,
+      sdk_packages: result.manifest.sdkPackages,
+      sdk_symbols: result.manifest.sdkSymbols,
+      scopes: result.manifest.scopes,
+      file_markers: result.manifest.fileMarkers,
+      product_areas: result.manifest.productAreas,
+      evidence: result.manifest.evidence,
+      updated_at: new Date().toISOString(),
+    }),
+  ]);
 
   if (error) {
     if (isMissingRepositoryScanColumnError(error)) {
@@ -164,6 +192,10 @@ async function saveRepositoryScanResult(repositoryId: string, result: Repository
 
     throw error;
   }
+
+  if (manifestError && !isMissingRepositoryManifestTableError(manifestError)) {
+    throw manifestError;
+  }
 }
 
 export function isMissingRepositoryScanColumnError(error: SupabaseError) {
@@ -173,4 +205,16 @@ export function isMissingRepositoryScanColumnError(error: SupabaseError) {
     error.message?.includes("latest_scan_signals") ||
     false
   );
+}
+
+function isMissingRepositoryManifestTableError(error: SupabaseError) {
+  return (
+    error.code === "42P01" ||
+    error.message?.includes("repository_manifests") ||
+    false
+  );
+}
+
+function hashManifest(manifest: RepositoryScanResult["manifest"]) {
+  return crypto.createHash("sha256").update(JSON.stringify(manifest)).digest("hex");
 }

@@ -1,15 +1,23 @@
-import { recordTrackedIssue } from "@/lib/issues/trackedIssues";
-import { createImpactIssue } from "@/lib/notifications/githubIssue";
-import { sendImpactAlertEmail } from "@/lib/notifications/email";
-import { getNotificationSettings } from "@/lib/notifications/settings";
-import { scanInstalledRepository } from "@/lib/scanner/scanInstalledRepository";
-import type { ScanSignal } from "@/lib/scanner/types";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+// @workflow_state: REVIEW
+import {
+  doesRepositoryManifestMatchProfile,
+  getOrCreateChangelogImpactProfile,
+  mapRepositoryManifestRow,
+  type RepositoryManifestRow,
+} from "@/lib/ai/changelogImpactProfile";
 import {
   assessRepositoryImpact,
   createRepositoryImpactCacheKey,
   type RepositoryImpactAssessment,
+  type RepositoryImpactInput,
 } from "@/lib/ai/repositoryImpact";
+import { recordTrackedIssue } from "@/lib/issues/trackedIssues";
+import { sendImpactAlertEmail } from "@/lib/notifications/email";
+import { createImpactIssue } from "@/lib/notifications/githubIssue";
+import { getNotificationSettings } from "@/lib/notifications/settings";
+import { scanInstalledRepository } from "@/lib/scanner/scanInstalledRepository";
+import type { RepositoryManifest, ScanSignal } from "@/lib/scanner/types";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type RepositoryRow = {
   id: string;
@@ -24,6 +32,7 @@ type ChangelogEntryRow = {
   link: string;
   ai_summary: string;
   ai_severity_level: "red" | "amber" | "green";
+  raw_content: string;
   migration_steps: string[] | null;
   impacted_keywords: string[] | null;
 };
@@ -51,7 +60,9 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
   const supabase = createSupabaseAdminClient();
   const { data: entry, error: entryError } = await supabase
     .from("changelog_entries")
-    .select("id,title,link,ai_summary,ai_severity_level,migration_steps,impacted_keywords")
+    .select(
+      "id,title,link,ai_summary,ai_severity_level,raw_content,migration_steps,impacted_keywords",
+    )
     .eq("id", changelogEntryId)
     .single<ChangelogEntryRow>();
 
@@ -71,6 +82,17 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
 
   const notifiedRepositories: string[] = [];
   const settings = await getNotificationSettings();
+  const impactProfile = await getOrCreateChangelogImpactProfile({
+    id: entry.id,
+    title: entry.title,
+    summary: entry.ai_summary,
+    rawContent: entry.raw_content,
+    migrationSteps: entry.migration_steps || [],
+    impactedKeywords: entry.impacted_keywords || [],
+  });
+  const manifestByRepositoryId = await getRepositoryManifestMap(
+    repositories.map((repository) => repository.id),
+  );
 
   for (const repository of repositories) {
     const [owner, repo] = repository.repo_name.split("/");
@@ -79,19 +101,46 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
       continue;
     }
 
+    const storedManifest = manifestByRepositoryId.get(repository.id);
+
+    if (
+      storedManifest &&
+      !doesRepositoryManifestMatchProfile(impactProfile, storedManifest)
+    ) {
+      await upsertProfileFilteredImpact({
+        entry,
+        repositoryName: repository.repo_name,
+        installedRepositoryId: repository.id,
+        impactProfile,
+        repositoryManifest: storedManifest,
+        reason: "Repository manifest did not match the changelog impact profile.",
+        confidence: 0.86,
+      });
+      continue;
+    }
+
     const result = await scanInstalledRepository(repository);
-    const impactInput = {
+    const impactInput = createRepositoryImpactInput({
+      entry,
       repositoryName: repository.repo_name,
-      changelog: {
-        id: entry.id,
-        title: entry.title,
-        summary: entry.ai_summary,
-        severity: entry.ai_severity_level,
-        migrationSteps: entry.migration_steps || [],
-        impactedKeywords: entry.impacted_keywords || [],
-      },
+      impactProfile,
+      repositoryManifest: result.manifest,
       signals: result.signals,
-    };
+    });
+
+    if (!doesRepositoryManifestMatchProfile(impactProfile, result.manifest)) {
+      await upsertProfileFilteredImpact({
+        entry,
+        repositoryName: repository.repo_name,
+        installedRepositoryId: repository.id,
+        impactProfile,
+        repositoryManifest: result.manifest,
+        reason: "Fresh repository manifest did not match the changelog impact profile.",
+        confidence: 0.9,
+      });
+      continue;
+    }
+
     const analysisCacheKey = createRepositoryImpactCacheKey(impactInput);
     const cachedAssessment = await getCachedImpactAssessment({
       changelogEntryId: entry.id,
@@ -109,6 +158,7 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
             reason: "No HubSpot usage signals were detected in the repository.",
             analysisMethod: "scanner" as const,
           });
+
     await upsertRepositoryImpact({
       changelogEntryId: entry.id,
       installedRepositoryId: repository.id,
@@ -170,6 +220,83 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
   }
 
   return { notifiedRepositories };
+}
+
+function createRepositoryImpactInput(input: {
+  entry: ChangelogEntryRow;
+  repositoryName: string;
+  impactProfile: RepositoryImpactInput["impactProfile"];
+  repositoryManifest: RepositoryManifest;
+  signals: ScanSignal[];
+}): RepositoryImpactInput {
+  return {
+    repositoryName: input.repositoryName,
+    impactProfile: input.impactProfile,
+    repositoryManifest: input.repositoryManifest,
+    changelog: {
+      id: input.entry.id,
+      title: input.entry.title,
+      summary: input.entry.ai_summary,
+      severity: input.entry.ai_severity_level,
+      migrationSteps: input.entry.migration_steps || [],
+      impactedKeywords: input.entry.impacted_keywords || [],
+    },
+    signals: input.signals,
+  };
+}
+
+async function getRepositoryManifestMap(repositoryIds: string[]) {
+  if (repositoryIds.length === 0) {
+    return new Map<string, RepositoryManifest>();
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("repository_manifests")
+    .select(
+      "installed_repository_id,platform_versions,api_paths,api_version_segments,sdk_packages,sdk_symbols,scopes,file_markers,product_areas,evidence",
+    )
+    .in("installed_repository_id", repositoryIds)
+    .returns<RepositoryManifestRow[]>();
+
+  if (error) {
+    return new Map<string, RepositoryManifest>();
+  }
+
+  return new Map(
+    data.map((row) => [row.installed_repository_id, mapRepositoryManifestRow(row)]),
+  );
+}
+
+async function upsertProfileFilteredImpact(input: {
+  entry: ChangelogEntryRow;
+  repositoryName: string;
+  installedRepositoryId: string;
+  impactProfile: RepositoryImpactInput["impactProfile"];
+  repositoryManifest: RepositoryManifest;
+  reason: string;
+  confidence: number;
+}) {
+  const impactInput = createRepositoryImpactInput({
+    entry: input.entry,
+    repositoryName: input.repositoryName,
+    impactProfile: input.impactProfile,
+    repositoryManifest: input.repositoryManifest,
+    signals: [],
+  });
+
+  await upsertRepositoryImpact({
+    changelogEntryId: input.entry.id,
+    installedRepositoryId: input.installedRepositoryId,
+    analysisCacheKey: createRepositoryImpactCacheKey(impactInput),
+    assessment: {
+      hasRelevantUsage: false,
+      relevantSignals: [],
+      confidence: input.confidence,
+      reason: input.reason,
+      analysisMethod: "profile",
+    },
+  });
 }
 
 async function getCachedImpactAssessment(input: {

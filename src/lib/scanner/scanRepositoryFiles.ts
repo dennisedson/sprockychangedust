@@ -1,4 +1,10 @@
-import type { RepositoryFile, RepositoryScanResult, ScanSignal } from "@/lib/scanner/types";
+import type {
+  RepositoryFile,
+  RepositoryManifest,
+  RepositoryManifestEvidence,
+  RepositoryScanResult,
+  ScanSignal,
+} from "@/lib/scanner/types";
 
 type ScanPattern = {
   kind: ScanSignal["kind"];
@@ -110,10 +116,12 @@ const documentationPatterns: ScanPattern[] = [
 
 export function scanRepositoryFiles(files: RepositoryFile[]): RepositoryScanResult {
   const signals = files.flatMap((file) => scanFile(file));
+  const manifest = buildRepositoryManifest(files, signals);
 
   return {
     hasHubSpotUsage: signals.length > 0,
     signals,
+    manifest,
   };
 }
 
@@ -287,4 +295,233 @@ function extractExcerpt(content: string, index: number) {
   const end = Math.min(content.length, index + 120);
 
   return content.slice(start, end).replace(/\s+/g, " ").trim();
+}
+
+function buildRepositoryManifest(
+  files: RepositoryFile[],
+  signals: ScanSignal[],
+): RepositoryManifest {
+  const evidence: RepositoryManifestEvidence[] = [];
+  const platformVersions = new Set<string>();
+  const apiPaths = new Set<string>();
+  const apiVersionSegments = new Set<string>();
+  const sdkPackages = new Set<string>();
+  const sdkSymbols = new Set<string>();
+  const scopes = new Set<string>();
+  const fileMarkers = new Set<string>();
+  const productAreas = new Set<string>();
+
+  for (const file of files) {
+    collectFileMarkers(file, fileMarkers, evidence);
+    collectPlatformVersions(file, platformVersions, evidence);
+    collectApiPaths(file, apiPaths, apiVersionSegments, productAreas, evidence);
+    collectSdkPackages(file, sdkPackages, productAreas, evidence);
+    collectSdkSymbols(file, sdkSymbols, productAreas, evidence);
+    collectScopes(file, scopes, productAreas, evidence);
+  }
+
+  for (const signal of signals) {
+    collectProductAreaFromText(signal.kind, productAreas);
+    collectProductAreaFromText(signal.label, productAreas);
+    collectProductAreaFromText(signal.excerpt || "", productAreas);
+  }
+
+  return {
+    platformVersions: sortUnique(platformVersions),
+    apiPaths: sortUnique(apiPaths),
+    apiVersionSegments: sortUnique(apiVersionSegments),
+    sdkPackages: sortUnique(sdkPackages),
+    sdkSymbols: sortUnique(sdkSymbols),
+    scopes: sortUnique(scopes),
+    fileMarkers: sortUnique(fileMarkers),
+    productAreas: sortUnique(productAreas),
+    evidence: dedupeEvidence(evidence),
+  };
+}
+
+function collectFileMarkers(
+  file: RepositoryFile,
+  fileMarkers: Set<string>,
+  evidence: RepositoryManifestEvidence[],
+) {
+  const markerPatterns = [
+    /(?:^|\/)hsproject\.json$/i,
+    /(?:^|\/)serverless\.json$/i,
+    /(?:^|\/)[^/]+-hsmeta\.json$/i,
+    /(?:^|\/)app-hsmeta\.json$/i,
+    /(?:^|\/)hubspot\.config\.ya?ml$/i,
+    /(?:^|\/)\.hsignore$/i,
+    /\.functions(?:\/|$)/i,
+  ];
+
+  if (!markerPatterns.some((pattern) => pattern.test(file.path))) {
+    return;
+  }
+
+  fileMarkers.add(file.path);
+  evidence.push({
+    kind: "file_marker",
+    value: file.path,
+    filePath: file.path,
+  });
+}
+
+function collectPlatformVersions(
+  file: RepositoryFile,
+  platformVersions: Set<string>,
+  evidence: RepositoryManifestEvidence[],
+) {
+  for (const match of file.content.matchAll(/"platformVersion"\s*:\s*"([^"]+)"/gi)) {
+    const version = match[1];
+
+    if (!version) {
+      continue;
+    }
+
+    platformVersions.add(version);
+    evidence.push({
+      kind: "platform_version",
+      value: version,
+      filePath: file.path,
+      line: getLineNumber(file.content, match.index || 0),
+    });
+  }
+}
+
+function collectApiPaths(
+  file: RepositoryFile,
+  apiPaths: Set<string>,
+  apiVersionSegments: Set<string>,
+  productAreas: Set<string>,
+  evidence: RepositoryManifestEvidence[],
+) {
+  const apiPathPattern =
+    /\/(?:crm|cms|oauth|automation|marketing|forms|files|events|webhooks|conversations|communication-preferences)\/(?:v\d+|\d{4}-\d{2}(?:-beta)?)(?:\/[^\s"'`<>)\]}]*)?/gi;
+
+  for (const match of file.content.matchAll(apiPathPattern)) {
+    const path = trimTrailingPunctuation(match[0]);
+    const versionMatch = path.match(/\/(v\d+|\d{4}-\d{2}(?:-beta)?)(?:\/|$)/i);
+
+    apiPaths.add(path);
+
+    if (versionMatch?.[1]) {
+      apiVersionSegments.add(versionMatch[1]);
+    }
+
+    collectProductAreaFromText(path, productAreas);
+    evidence.push({
+      kind: "api_path",
+      value: path,
+      filePath: file.path,
+      line: getLineNumber(file.content, match.index || 0),
+    });
+  }
+}
+
+function collectSdkPackages(
+  file: RepositoryFile,
+  sdkPackages: Set<string>,
+  productAreas: Set<string>,
+  evidence: RepositoryManifestEvidence[],
+) {
+  if (!/(?:^|\/)(package|composer)\.json$|requirements\.txt$|Gemfile$/i.test(file.path)) {
+    return;
+  }
+
+  for (const match of file.content.matchAll(/@hubspot\/api-client|hubspot-api-client|hubspot\/api-client/gi)) {
+    sdkPackages.add(match[0]);
+    collectProductAreaFromText(match[0], productAreas);
+    evidence.push({
+      kind: "package",
+      value: match[0],
+      filePath: file.path,
+      line: getLineNumber(file.content, match.index || 0),
+    });
+  }
+}
+
+function collectSdkSymbols(
+  file: RepositoryFile,
+  sdkSymbols: Set<string>,
+  productAreas: Set<string>,
+  evidence: RepositoryManifestEvidence[],
+) {
+  const symbolPattern =
+    /\b(?:hubspotClient|hubspot)\.(?:crm|cms|oauth|automation|marketing|files|settings|webhooks)(?:\.[A-Za-z0-9_]+){0,5}/g;
+
+  for (const match of file.content.matchAll(symbolPattern)) {
+    sdkSymbols.add(match[0]);
+    collectProductAreaFromText(match[0], productAreas);
+    evidence.push({
+      kind: "function_call",
+      value: match[0],
+      filePath: file.path,
+      line: getLineNumber(file.content, match.index || 0),
+    });
+  }
+}
+
+function collectScopes(
+  file: RepositoryFile,
+  scopes: Set<string>,
+  productAreas: Set<string>,
+  evidence: RepositoryManifestEvidence[],
+) {
+  const scopePattern =
+    /\b(?:crm|cms|oauth|settings|timeline|automation|forms|files|tickets|contacts|companies|deals)\.[a-z0-9_.:-]+(?:\.[a-z]+)?\b/gi;
+
+  for (const match of file.content.matchAll(scopePattern)) {
+    const scope = trimTrailingPunctuation(match[0]);
+
+    scopes.add(scope);
+    collectProductAreaFromText(scope, productAreas);
+    evidence.push({
+      kind: "scope",
+      value: scope,
+      filePath: file.path,
+      line: getLineNumber(file.content, match.index || 0),
+    });
+  }
+}
+
+function collectProductAreaFromText(text: string, productAreas: Set<string>) {
+  const lowerText = text.toLowerCase();
+  const mappings = [
+    ["crm", /\bcrm\b|contacts?|companies|deals|tickets|owners|associations|objects|properties/],
+    ["cms", /\bcms\b|hubl|hubdb|blog|page|theme|module|source-code/],
+    ["oauth", /\boauth\b|authorization|access[-_\s]?token|refresh[-_\s]?token|scope/],
+    ["webhooks", /webhook|subscription|x-hubspot-signature/],
+    ["forms", /\bforms?\b/],
+    ["serverless", /serverless|\.functions|exports\.main/],
+    ["developer-platform", /platformversion|hsproject|hsmeta|hubspot\.config|project config/],
+  ] as const;
+
+  for (const [area, pattern] of mappings) {
+    if (pattern.test(lowerText)) {
+      productAreas.add(area);
+    }
+  }
+}
+
+function sortUnique(values: Set<string>) {
+  return Array.from(values).sort((a, b) => a.localeCompare(b));
+}
+
+function dedupeEvidence(evidence: RepositoryManifestEvidence[]) {
+  const seen = new Set<string>();
+
+  return evidence.filter((item) => {
+    const key = `${item.kind}:${item.value}:${item.filePath}:${item.line || ""}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function trimTrailingPunctuation(value: string) {
+  return value.replace(/[.,;:]+$/g, "");
 }

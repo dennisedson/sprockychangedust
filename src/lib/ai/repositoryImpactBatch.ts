@@ -1,6 +1,10 @@
 // @workflow_state: REVIEW
 import { toFile } from "openai";
 import {
+  doesRepositoryManifestMatchProfile,
+  getOrCreateChangelogImpactProfile,
+} from "@/lib/ai/changelogImpactProfile";
+import {
   createRepositoryImpactCacheKey,
   createRepositoryImpactResponseBody,
   parseRepositoryImpactResponseText,
@@ -24,6 +28,7 @@ type ChangelogEntryRow = {
   title: string;
   ai_summary: string;
   ai_severity_level: "red" | "amber" | "green";
+  raw_content: string;
   migration_steps: string[] | null;
   impacted_keywords: string[] | null;
 };
@@ -68,7 +73,7 @@ export async function enqueueRepositoryImpactBatch(changelogEntryId: string) {
   const [entryResult, repositoryResult] = await Promise.all([
     supabase
       .from("changelog_entries")
-      .select("id,title,ai_summary,ai_severity_level,migration_steps,impacted_keywords")
+      .select("id,title,ai_summary,ai_severity_level,raw_content,migration_steps,impacted_keywords")
       .eq("id", changelogEntryId)
       .single<ChangelogEntryRow>(),
     supabase
@@ -89,6 +94,14 @@ export async function enqueueRepositoryImpactBatch(changelogEntryId: string) {
   const requests: BatchRequestRecord[] = [];
   const jsonlRequests: string[] = [];
   const skippedRepositories: string[] = [];
+  const impactProfile = await getOrCreateChangelogImpactProfile({
+    id: entryResult.data.id,
+    title: entryResult.data.title,
+    summary: entryResult.data.ai_summary,
+    rawContent: entryResult.data.raw_content,
+    migrationSteps: entryResult.data.migration_steps || [],
+    impactedKeywords: entryResult.data.impacted_keywords || [],
+  });
 
   for (const repository of repositoryResult.data) {
     const scanResult = await scanInstalledRepository(repository);
@@ -102,6 +115,8 @@ export async function enqueueRepositoryImpactBatch(changelogEntryId: string) {
         migrationSteps: entryResult.data.migration_steps || [],
         impactedKeywords: entryResult.data.impacted_keywords || [],
       },
+      impactProfile,
+      repositoryManifest: scanResult.manifest,
       signals: scanResult.signals,
     };
     const analysisCacheKey = createRepositoryImpactCacheKey(impactInput);
@@ -111,6 +126,24 @@ export async function enqueueRepositoryImpactBatch(changelogEntryId: string) {
     });
 
     if (cached?.analysis_cache_key === analysisCacheKey) {
+      skippedRepositories.push(repository.repo_name);
+      continue;
+    }
+
+    if (!doesRepositoryManifestMatchProfile(impactProfile, scanResult.manifest)) {
+      await upsertRepositoryImpact({
+        changelogEntryId: entryResult.data.id,
+        installedRepositoryId: repository.id,
+        analysisCacheKey,
+        assessment: {
+          hasRelevantUsage: false,
+          relevantSignals: [],
+          confidence: 0.9,
+          reason:
+            "Repository manifest did not match the changelog impact profile.",
+          analysisMethod: "profile",
+        },
+      });
       skippedRepositories.push(repository.repo_name);
       continue;
     }

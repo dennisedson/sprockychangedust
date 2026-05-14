@@ -2,8 +2,9 @@
 import crypto from "node:crypto";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
+import type { ChangelogImpactProfile } from "@/lib/ai/changelogImpactProfile";
 import { getOpenAIClient, getOpenAIModel } from "@/lib/ai/openaiClient";
-import type { ScanSignal } from "@/lib/scanner/types";
+import type { RepositoryManifest, ScanSignal } from "@/lib/scanner/types";
 
 const maxSignalsForAi = 30;
 
@@ -23,7 +24,7 @@ export type RepositoryImpactAssessment = {
   relevantSignals: ScanSignal[];
   confidence: number;
   reason: string;
-  analysisMethod: "openai" | "heuristic" | "scanner" | "batch";
+  analysisMethod: "openai" | "heuristic" | "scanner" | "batch" | "profile";
 };
 
 export type RepositoryImpactInput = {
@@ -36,6 +37,8 @@ export type RepositoryImpactInput = {
     migrationSteps: string[];
     impactedKeywords: string[];
   };
+  impactProfile?: ChangelogImpactProfile;
+  repositoryManifest?: RepositoryManifest;
   signals: ScanSignal[];
 };
 
@@ -43,6 +46,7 @@ export const repositoryImpactInstructions = [
   "You decide whether a connected GitHub repository is actually impacted by one HubSpot developer changelog.",
   "HubSpot usage alone is not enough. The repository evidence must match the changelog's specific API, product area, auth flow, endpoint family, SDK, CMS feature, webhook behavior, or migration subject.",
   "For example, CMS, HubL, HubDB, or source-code API evidence does not match an OAuth, token, or scope changelog unless that evidence itself mentions OAuth, tokens, authorization, or scopes.",
+  "Use the Global Impact Profile as the expected code signature map, then compare it to the concrete repository signals.",
   "Return hasRelevantUsage true only when at least one provided signal directly supports the match. Select only the indexes of the supporting signals.",
 ].join("\n");
 
@@ -124,6 +128,8 @@ export function parseRepositoryImpactResponseText(
 export function createRepositoryImpactCacheKey(input: RepositoryImpactInput) {
   const hashInput = {
     changelog: input.changelog,
+    impactProfile: input.impactProfile,
+    repositoryManifest: input.repositoryManifest,
     signals: input.signals.map((signal) => ({
       filePath: signal.filePath,
       kind: signal.kind,
@@ -164,6 +170,10 @@ function heuristicRepositoryImpact(input: RepositoryImpactInput): RepositoryImpa
     input.changelog.summary,
     ...input.changelog.migrationSteps,
     ...input.changelog.impactedKeywords,
+    ...(input.impactProfile?.searchTerms || []),
+    ...(input.impactProfile?.apiPatterns || []),
+    ...(input.impactProfile?.scopeChanges || []),
+    ...(input.impactProfile?.functionCalls || []),
   ]
     .join(" ")
     .toLowerCase();
@@ -187,6 +197,19 @@ function toRepositoryImpactPromptPayload(input: RepositoryImpactInput) {
   return {
     repositoryName: input.repositoryName,
     changelog: input.changelog,
+    impactProfile: input.impactProfile,
+    repositoryManifest: input.repositoryManifest
+      ? {
+          platformVersions: input.repositoryManifest.platformVersions,
+          apiPaths: input.repositoryManifest.apiPaths,
+          apiVersionSegments: input.repositoryManifest.apiVersionSegments,
+          sdkPackages: input.repositoryManifest.sdkPackages,
+          sdkSymbols: input.repositoryManifest.sdkSymbols,
+          scopes: input.repositoryManifest.scopes,
+          fileMarkers: input.repositoryManifest.fileMarkers,
+          productAreas: input.repositoryManifest.productAreas,
+        }
+      : undefined,
     signals: input.signals.slice(0, maxSignalsForAi).map((signal, index) => ({
       index,
       filePath: signal.filePath,
