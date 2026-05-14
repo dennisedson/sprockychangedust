@@ -94,5 +94,14 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
     notifiedRepositories.push(repository.repo_name);
   }
 
+  const { error: statusError } = await supabase
+    .from("changelog_entries")
+    .update({ status: "notified" })
+    .eq("id", changelogEntryId);
+
+  if (statusError) {
+    throw statusError;
+  }
+
   return { notifiedRepositories };
 }
