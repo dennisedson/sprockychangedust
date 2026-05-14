@@ -41,6 +41,16 @@ type RepositoryImpactRow = {
   scan_signals: ScanSignal[] | null;
 };
 
+type GitHubIssueLabel =
+  | string
+  | {
+      name?: string | null;
+    };
+
+type GitHubIssueAssignee = {
+  login?: string | null;
+};
+
 export async function POST(request: Request) {
   const payload = issueRequestSchema.safeParse(await request.json());
 
@@ -171,6 +181,8 @@ export async function POST(request: Request) {
         githubIssueNumber: issue.data.number,
         githubIssueUrl: issue.data.html_url,
         githubIssueState: issue.data.state === "closed" ? "closed" : "open",
+        assignees: mapIssueAssignees(issue.data.assignees),
+        labels: mapIssueLabels(issue.data.labels),
         closedAt: issue.data.closed_at,
       });
 
@@ -227,4 +239,16 @@ export async function PATCH(request: Request) {
   }
 
   return NextResponse.json({ ok: true });
+}
+
+function mapIssueAssignees(assignees?: GitHubIssueAssignee[] | null) {
+  return (assignees || [])
+    .map((assignee) => assignee.login)
+    .filter((login): login is string => Boolean(login));
+}
+
+function mapIssueLabels(labels?: GitHubIssueLabel[] | null) {
+  return (labels || [])
+    .map((label) => (typeof label === "string" ? label : label.name))
+    .filter((label): label is string => Boolean(label));
 }

@@ -58,6 +58,19 @@ export function TrackedIssueList({
             <strong>#{issue.issueNumber}</strong>
             <ExternalLink size={12} />
           </a>
+          <div className={styles.issueMeta}>
+            <span className={issue.issueState === "closed" ? styles.closedState : styles.openState}>
+              {issue.issueState}
+            </span>
+            {issue.assignees.length > 0 ? (
+              <span>{issue.assignees.map((assignee) => `@${assignee}`).join(", ")}</span>
+            ) : (
+              <span>Unassigned</span>
+            )}
+            {issue.labels.slice(0, 3).map((label) => (
+              <span key={label}>{label}</span>
+            ))}
+          </div>
           <button
             aria-label={`Dismiss issue ${issue.issueNumber}`}
             onClick={() => dismissIssue(issue.id)}

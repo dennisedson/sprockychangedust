@@ -69,6 +69,15 @@ type IssueWebhookPayload = {
     number: number;
     html_url: string;
     state: "open" | "closed";
+    assignees?: Array<{
+      login?: string | null;
+    }> | null;
+    labels?: Array<
+      | string
+      | {
+          name?: string | null;
+        }
+    > | null;
     closed_at: string | null;
   };
 };
@@ -142,8 +151,29 @@ export async function handleGitHubIssueWebhook(payload: IssueWebhookPayload) {
     issueNumber: payload.issue.number,
     issueUrl: payload.issue.html_url,
     issueState: payload.issue.state,
+    assignees: mapIssueAssignees(payload.issue.assignees),
+    labels: mapIssueLabels(payload.issue.labels),
     closedAt: payload.issue.closed_at,
   });
+}
+
+function mapIssueAssignees(assignees?: Array<{ login?: string | null }> | null) {
+  return (assignees || [])
+    .map((assignee) => assignee.login)
+    .filter((login): login is string => Boolean(login));
+}
+
+function mapIssueLabels(
+  labels?: Array<
+    | string
+    | {
+        name?: string | null;
+      }
+  > | null,
+) {
+  return (labels || [])
+    .map((label) => (typeof label === "string" ? label : label.name))
+    .filter((label): label is string => Boolean(label));
 }
 
 export async function syncInstallationRepositories(installationId: number) {

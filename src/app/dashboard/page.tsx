@@ -1,8 +1,9 @@
 // @workflow_state: REVIEW
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { IssueAutoRefresh } from "@/components/issues/IssueAutoRefresh";
 import { env } from "@/lib/env";
-import { listOpenTrackedIssues } from "@/lib/issues/trackedIssues";
+import { listVisibleTrackedIssues } from "@/lib/issues/trackedIssues";
 import type { ScanSignal } from "@/lib/scanner/types";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -96,7 +97,7 @@ async function getDashboardData() {
     repositories: repositoriesResult.data,
     changelogEntries: changelogEntriesResult.data,
     repositoryImpacts: repositoryImpactsResult.data,
-    trackedIssues: await listOpenTrackedIssues(),
+    trackedIssues: await listVisibleTrackedIssues(),
   };
 }
 
@@ -113,6 +114,7 @@ export default async function DashboardPage() {
       </div>
 
       <DashboardOverview {...dashboardData} />
+      <IssueAutoRefresh />
     </DashboardShell>
   );
 }

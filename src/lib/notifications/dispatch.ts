@@ -21,6 +21,16 @@ type ChangelogEntryRow = {
   migration_steps: string[] | null;
 };
 
+type GitHubIssueLabel =
+  | string
+  | {
+      name?: string | null;
+    };
+
+type GitHubIssueAssignee = {
+  login?: string | null;
+};
+
 export async function dispatchImpactNotifications(changelogEntryId: string) {
   const supabase = createSupabaseAdminClient();
   const { data: entry, error: entryError } = await supabase
@@ -97,6 +107,8 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
         githubIssueNumber: issue.data.number,
         githubIssueUrl: issue.data.html_url,
         githubIssueState: issue.data.state === "closed" ? "closed" : "open",
+        assignees: mapIssueAssignees(issue.data.assignees),
+        labels: mapIssueLabels(issue.data.labels),
         closedAt: issue.data.closed_at,
       });
     }
@@ -114,4 +126,16 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
   }
 
   return { notifiedRepositories };
+}
+
+function mapIssueAssignees(assignees?: GitHubIssueAssignee[] | null) {
+  return (assignees || [])
+    .map((assignee) => assignee.login)
+    .filter((login): login is string => Boolean(login));
+}
+
+function mapIssueLabels(labels?: GitHubIssueLabel[] | null) {
+  return (labels || [])
+    .map((label) => (typeof label === "string" ? label : label.name))
+    .filter((label): label is string => Boolean(label));
 }

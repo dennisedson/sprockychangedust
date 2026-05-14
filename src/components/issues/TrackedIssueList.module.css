@@ -6,7 +6,7 @@
 }
 
 .issueItem {
-  align-items: center;
+  align-items: start;
   background: #fff8f5;
   border: 1px solid #ffd8ce;
   border-radius: 8px;
@@ -34,6 +34,35 @@
 .issueItem a strong {
   color: var(--primary-dark);
   flex: 0 0 auto;
+}
+
+.issueMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  grid-column: 1;
+}
+
+.issueMeta span {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 7px;
+}
+
+.issueMeta .openState {
+  background: #eaf7ef;
+  border-color: #bae5c8;
+  color: var(--green);
+}
+
+.issueMeta .closedState {
+  background: #f4f7fb;
+  border-color: var(--line);
+  color: var(--muted);
 }
 
 .issueItem button {

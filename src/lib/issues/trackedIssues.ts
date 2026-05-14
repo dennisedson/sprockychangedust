@@ -13,6 +13,8 @@ export type TrackedIssueDisplay = {
   issueNumber: number;
   issueUrl: string;
   issueState: "open" | "closed";
+  assignees: string[];
+  labels: string[];
   createdAt: string;
 };
 
@@ -23,6 +25,8 @@ export type TrackedIssueRow = {
   github_issue_number: number;
   github_issue_url: string;
   github_issue_state: "open" | "closed";
+  github_issue_assignees: string[];
+  github_issue_labels: string[];
   created_at: string;
   changelog_entries: {
     title: string;
@@ -42,7 +46,7 @@ export function isMissingTrackedIssuesTableError(error: { code?: string; message
   );
 }
 
-export async function listOpenTrackedIssues() {
+export async function listVisibleTrackedIssues() {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     return [];
   }
@@ -51,9 +55,8 @@ export async function listOpenTrackedIssues() {
   const { data, error } = await supabase
     .from("tracked_issues")
     .select(
-      "id,changelog_entry_id,installed_repository_id,github_issue_number,github_issue_url,github_issue_state,created_at,changelog_entries(title,link,ai_severity_level),installed_repositories(repo_name)",
+      "id,changelog_entry_id,installed_repository_id,github_issue_number,github_issue_url,github_issue_state,github_issue_assignees,github_issue_labels,created_at,changelog_entries(title,link,ai_severity_level),installed_repositories(repo_name)",
     )
-    .eq("github_issue_state", "open")
     .is("dismissed_at", null)
     .order("created_at", { ascending: false })
     .limit(100)
@@ -77,6 +80,8 @@ export async function recordTrackedIssue(input: {
   githubIssueNumber: number;
   githubIssueUrl: string;
   githubIssueState: "open" | "closed";
+  assignees: string[];
+  labels: string[];
   closedAt: string | null;
 }) {
   const supabase = createSupabaseAdminClient();
@@ -88,6 +93,8 @@ export async function recordTrackedIssue(input: {
       github_issue_number: input.githubIssueNumber,
       github_issue_url: input.githubIssueUrl,
       github_issue_state: input.githubIssueState,
+      github_issue_assignees: input.assignees,
+      github_issue_labels: input.labels,
       closed_at: input.closedAt,
       updated_at: new Date().toISOString(),
     },
@@ -107,7 +114,7 @@ export async function listExistingOpenTrackedIssues(input: {
   const { data, error } = await supabase
     .from("tracked_issues")
     .select(
-      "id,changelog_entry_id,installed_repository_id,github_issue_number,github_issue_url,github_issue_state,created_at,changelog_entries(title,link,ai_severity_level),installed_repositories(repo_name)",
+      "id,changelog_entry_id,installed_repository_id,github_issue_number,github_issue_url,github_issue_state,github_issue_assignees,github_issue_labels,created_at,changelog_entries(title,link,ai_severity_level),installed_repositories(repo_name)",
     )
     .eq("changelog_entry_id", input.changelogEntryId)
     .in("installed_repository_id", input.repositoryIds)
@@ -142,6 +149,8 @@ export async function updateTrackedIssueStateFromGitHub(input: {
   issueNumber: number;
   issueUrl: string;
   issueState: "open" | "closed";
+  assignees: string[];
+  labels: string[];
   closedAt: string | null;
 }) {
   const supabase = createSupabaseAdminClient();
@@ -151,6 +160,8 @@ export async function updateTrackedIssueStateFromGitHub(input: {
       github_issue_number: input.issueNumber,
       github_issue_url: input.issueUrl,
       github_issue_state: input.issueState,
+      github_issue_assignees: input.assignees,
+      github_issue_labels: input.labels,
       closed_at: input.closedAt,
       updated_at: new Date().toISOString(),
     })
@@ -177,6 +188,8 @@ function mapTrackedIssueRow(row: TrackedIssueRow): TrackedIssueDisplay {
     issueNumber: row.github_issue_number,
     issueUrl: row.github_issue_url,
     issueState: row.github_issue_state,
+    assignees: row.github_issue_assignees || [],
+    labels: row.github_issue_labels || [],
     createdAt: row.created_at,
   };
 }

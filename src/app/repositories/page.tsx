@@ -1,11 +1,12 @@
 // @workflow_state: REVIEW
 import { ExternalLink, Github, Plus, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { IssueAutoRefresh } from "@/components/issues/IssueAutoRefresh";
 import { TrackedIssueList } from "@/components/issues/TrackedIssueList";
 import { RepositoryActionButton } from "@/components/repositories/RepositoryActionButton";
 import { RepositoryUsageModal } from "@/components/repositories/RepositoryUsageModal";
 import {
-  listOpenTrackedIssues,
+  listVisibleTrackedIssues,
   type TrackedIssueDisplay,
 } from "@/lib/issues/trackedIssues";
 import {
@@ -75,7 +76,7 @@ async function getRepositories() {
 
 export default async function RepositoriesPage() {
   const repositories = await getRepositories();
-  const trackedIssues = await listOpenTrackedIssues();
+  const trackedIssues = await listVisibleTrackedIssues();
 
   return (
     <DashboardShell active="Repositories">
@@ -166,6 +167,7 @@ export default async function RepositoriesPage() {
           ))}
         </section>
       )}
+      <IssueAutoRefresh />
     </DashboardShell>
   );
 }
