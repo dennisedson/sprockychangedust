@@ -19,6 +19,10 @@ export const changelogImpactProfileSchema = z.object({
 });
 
 export type ChangelogImpactProfile = z.infer<typeof changelogImpactProfileSchema>;
+type ChangelogImpactProfileResult = {
+  profile: ChangelogImpactProfile;
+  analysisMethod: "openai" | "heuristic";
+};
 
 export type ChangelogImpactProfileInput = {
   id: string;
@@ -69,16 +73,16 @@ export async function getOrCreateChangelogImpactProfile(
     return cached;
   }
 
-  const profile = await createChangelogImpactProfile(input);
+  const result = await createChangelogImpactProfile(input);
 
   await saveChangelogImpactProfile({
     changelogEntryId: input.id,
     cacheKey,
-    profile,
-    analysisMethod: getOpenAIClient() ? "openai" : "heuristic",
+    profile: result.profile,
+    analysisMethod: result.analysisMethod,
   });
 
-  return profile;
+  return result.profile;
 }
 
 export function doesRepositoryManifestMatchProfile(
@@ -149,11 +153,14 @@ export function mapRepositoryManifestRow(row: RepositoryManifestRow): Repository
 
 async function createChangelogImpactProfile(
   input: ChangelogImpactProfileInput,
-): Promise<ChangelogImpactProfile> {
+): Promise<ChangelogImpactProfileResult> {
   const openai = getOpenAIClient();
 
   if (!openai) {
-    return heuristicChangelogImpactProfile(input);
+    return {
+      profile: heuristicChangelogImpactProfile(input),
+      analysisMethod: "heuristic",
+    };
   }
 
   try {
@@ -164,7 +171,7 @@ async function createChangelogImpactProfile(
       text: {
         format: zodTextFormat(changelogImpactProfileSchema, "changelog_impact_profile"),
       },
-      max_output_tokens: 900,
+      max_output_tokens: 1600,
       store: false,
       user: "sprocky-changedust",
       metadata: {
@@ -174,13 +181,22 @@ async function createChangelogImpactProfile(
     });
 
     if (!response.output_parsed) {
-      return heuristicChangelogImpactProfile(input);
+      return {
+        profile: heuristicChangelogImpactProfile(input),
+        analysisMethod: "heuristic",
+      };
     }
 
-    return normalizeChangelogImpactProfile(response.output_parsed);
+    return {
+      profile: normalizeChangelogImpactProfile(response.output_parsed),
+      analysisMethod: "openai",
+    };
   } catch (error) {
     console.error(error);
-    return heuristicChangelogImpactProfile(input);
+    return {
+      profile: heuristicChangelogImpactProfile(input),
+      analysisMethod: "heuristic",
+    };
   }
 }
 
