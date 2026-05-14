@@ -17,7 +17,7 @@ HubSpot OAuth, lead capture, and CRM sync are intentionally out of MVP scope.
 
 1. Copy `.env.example` to `.env`.
 2. Fill in Supabase, GitHub App, Resend, and OpenAI values.
-3. Run the Supabase migration in `supabase/migrations/0001_mvp_schema.sql`.
+3. Run the Supabase migrations in `supabase/migrations/` in filename order.
 4. Install dependencies and start the app:
 
 ```bash

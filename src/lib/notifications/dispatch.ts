@@ -1,7 +1,6 @@
 import { createImpactIssue } from "@/lib/notifications/githubIssue";
 import { sendImpactAlertEmail } from "@/lib/notifications/email";
-import { scanRepositoryFiles } from "@/lib/scanner/scanRepositoryFiles";
-import { fetchRepositoryScanFiles } from "@/lib/github/repositories";
+import { scanInstalledRepository } from "@/lib/scanner/scanInstalledRepository";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type RepositoryRow = {
@@ -51,12 +50,7 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
       continue;
     }
 
-    const files = await fetchRepositoryScanFiles({
-      installationId: repository.installation_id,
-      owner,
-      repo,
-    });
-    const result = scanRepositoryFiles(files);
+    const result = await scanInstalledRepository(repository);
 
     await supabase.from("repository_impacts").insert({
       changelog_entry_id: entry.id,

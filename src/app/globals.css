@@ -73,6 +73,12 @@ select {
   color: var(--red);
 }
 
+.button.smallButton {
+  font-size: 13px;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
 .input,
 .textarea,
 .select {
@@ -675,6 +681,12 @@ select {
   margin: 0;
 }
 
+.pageActions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
 .compact {
   max-width: 140px;
 }
@@ -884,7 +896,7 @@ select {
   align-items: center;
   display: grid;
   gap: 18px;
-  grid-template-columns: 2fr 1.35fr 1.45fr 1.1fr;
+  grid-template-columns: 2fr 1.3fr 1.35fr 1fr 1.4fr;
   padding: 18px 26px;
 }
 
@@ -902,10 +914,21 @@ select {
 }
 
 .repoName,
+.repoActions,
+.scanSummary,
 .toggleCell {
   align-items: center;
   display: flex;
   gap: 12px;
+}
+
+.repoActions {
+  justify-content: space-between;
+}
+
+.scanSummary {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .settingsStack {
@@ -1044,7 +1067,7 @@ select {
 
   .repoTableHead,
   .repoRow {
-    min-width: 940px;
+    min-width: 1120px;
   }
 }
 
@@ -1061,6 +1084,7 @@ select {
 
   .marketingActions,
   .marketingNav nav,
+  .pageActions,
   .topbar,
   .pageHeader,
   .tableTools,

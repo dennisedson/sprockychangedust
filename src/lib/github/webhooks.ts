@@ -5,6 +5,9 @@ import {
   type GitHubInstallationRepository,
   listInstallationRepositories,
 } from "@/lib/github/repositories";
+import { scanInstalledRepositoriesByGithubRepoIds } from "@/lib/scanner/scanInstalledRepository";
+
+const initialScanLimit = 25;
 
 export function verifyGitHubWebhookSignature(payload: string, signatureHeader: string | null) {
   if (!signatureHeader) {
@@ -76,6 +79,13 @@ export async function handleGitHubInstallationWebhook(payload: InstallationPaylo
       repositories,
       isActiveForScanning: payload.action !== "deleted",
     });
+
+    if (payload.action !== "deleted") {
+      await scanInstalledRepositoriesByGithubRepoIds(
+        repositories.map((repository) => repository.id),
+        { limit: initialScanLimit },
+      );
+    }
   }
 
   if (removedRepositories.length > 0) {
@@ -102,6 +112,12 @@ export async function handleGitHubRepositoryWebhook(payload: RepositoryWebhookPa
     repositories: [payload.repository],
     isActiveForScanning: !isInactive,
   });
+
+  if (!isInactive) {
+    await scanInstalledRepositoriesByGithubRepoIds([payload.repository.id], {
+      limit: initialScanLimit,
+    });
+  }
 }
 
 export async function syncInstallationRepositories(installationId: number) {
@@ -117,6 +133,11 @@ export async function syncInstallationRepositories(installationId: number) {
     repositories,
     isActiveForScanning: true,
   });
+
+  await scanInstalledRepositoriesByGithubRepoIds(
+    repositories.map((repository) => repository.id),
+    { limit: initialScanLimit },
+  );
 
   return repositories;
 }
