@@ -2,18 +2,32 @@ import { createGitHubApp } from "@/lib/github/app";
 import type { RepositoryFile } from "@/lib/scanner/types";
 
 const candidatePaths = [
+  "README.md",
+  "README.mdx",
+  "README",
+  "hsproject.json",
+  "hubspot.config.yml",
+  "hubspot.config.yaml",
+  ".hsignore",
+  ".github/workflows",
   "package.json",
   "requirements.txt",
   "composer.json",
   "Gemfile",
+  "docs",
+  "documentation",
   "src",
+  "src/app",
   "app",
   "pages",
   "lib",
   "api",
 ];
 
-const sourceFilePattern = /\.(js|jsx|ts|tsx|py|php|rb)$/;
+const scannableDirectoryFilePattern =
+  /(?:^|\/)readme(?:\.[^.]+)?$|\.(js|jsx|ts|tsx|py|php|rb|md|mdx|html|hubl|json|yml|yaml)$/i;
+const scannableDirectoryPattern =
+  /(?:^|\/)(app|api|components|docs|documentation|functions|lib|pages|routes|src|webhooks)$|\.functions$/i;
 
 type InstallationOctokit = Awaited<ReturnType<ReturnType<typeof createGitHubApp>["getInstallationOctokit"]>>;
 type GitHubContentItem = {
@@ -88,6 +102,7 @@ async function fetchPath(
   repo: string,
   path: string,
   maxSourceFiles: number,
+  depth = 0,
 ): Promise<RepositoryFile[]> {
   try {
     const response = await octokit.request("GET /repos/{owner}/{repo}/contents/{path}", {
@@ -98,14 +113,33 @@ async function fetchPath(
     const data = response.data as GitHubContentItem | GitHubContentItem[];
 
     if (Array.isArray(data)) {
-      const sourceFiles = data.filter((item) => item.type === "file" && sourceFilePattern.test(item.path));
-      const files = await Promise.all(
-        sourceFiles
-          .slice(0, maxSourceFiles)
-          .map((item) => fetchPath(octokit, owner, repo, item.path, 1)),
+      const sourceFiles = data.filter(
+        (item) => item.type === "file" && scannableDirectoryFilePattern.test(item.path),
       );
+      const files: RepositoryFile[] = [];
 
-      return files.flat();
+      for (const item of sourceFiles.slice(0, maxSourceFiles)) {
+        files.push(...(await fetchPath(octokit, owner, repo, item.path, 1, depth)));
+      }
+
+      if (depth < 2 && files.length < maxSourceFiles) {
+        const directories = data.filter(
+          (item) => item.type === "dir" && scannableDirectoryPattern.test(item.path),
+        );
+
+        for (const item of directories) {
+          if (files.length >= maxSourceFiles) {
+            break;
+          }
+
+          const remainingFileCount = maxSourceFiles - files.length;
+          files.push(
+            ...(await fetchPath(octokit, owner, repo, item.path, remainingFileCount, depth + 1)),
+          );
+        }
+      }
+
+      return files;
     }
 
     if (data.type !== "file" || !data.content) {
