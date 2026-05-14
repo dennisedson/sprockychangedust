@@ -856,6 +856,29 @@ select {
   overflow: hidden;
 }
 
+.emptyState {
+  align-items: center;
+  display: grid;
+  justify-items: center;
+  padding: 54px 24px;
+  text-align: center;
+}
+
+.emptyState svg {
+  color: var(--primary);
+}
+
+.emptyState h2 {
+  margin: 18px 0 8px;
+}
+
+.emptyState p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 24px;
+  max-width: 560px;
+}
+
 .repoTableHead,
 .repoRow {
   align-items: center;

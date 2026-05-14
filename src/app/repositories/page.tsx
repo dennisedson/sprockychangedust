@@ -1,40 +1,42 @@
 import { Github, Plus, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { env } from "@/lib/env";
+import { getGitHubInstallUrl } from "@/lib/github/app";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
-const repositories = [
-  {
-    name: "hubspot/hubspot-cms-react",
-    installationId: "inst_8472910",
-    lastScanned: "May 12, 2026, 10:23 AM",
-    enabled: true,
-  },
-  {
-    name: "acme-corp/marketing-theme",
-    installationId: "inst_8472910",
-    lastScanned: "May 11, 2026, 04:15 PM",
-    enabled: false,
-  },
-  {
-    name: "acme-corp/crm-sync-worker",
-    installationId: "inst_8472910",
-    lastScanned: "May 10, 2026, 09:00 AM",
-    enabled: true,
-  },
-  {
-    name: "sprocky-inc/changedust-core",
-    installationId: "inst_1129304",
-    lastScanned: "May 12, 2026, 11:45 AM",
-    enabled: true,
-  },
-  {
-    name: "sprocky-inc/docs-site",
-    installationId: "inst_1129304",
-    lastScanned: "May 08, 2026, 02:30 PM",
-    enabled: false,
-  },
-];
+export const dynamic = "force-dynamic";
 
-export default function RepositoriesPage() {
+type RepositoryRow = {
+  id: string;
+  installation_id: number;
+  repo_name: string;
+  is_active_for_scanning: boolean;
+  last_scanned_at: string | null;
+  created_at: string;
+};
+
+async function getRepositories() {
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    return [];
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("installed_repositories")
+    .select("id,installation_id,repo_name,is_active_for_scanning,last_scanned_at,created_at")
+    .order("created_at", { ascending: false })
+    .returns<RepositoryRow[]>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+export default async function RepositoriesPage() {
+  const repositories = await getRepositories();
+
   return (
     <DashboardShell active="Repositories">
       <div className="pageHeader">
@@ -42,7 +44,7 @@ export default function RepositoriesPage() {
           <h1>Connected GitHub Repositories</h1>
           <p>Manage source code connections and automated scanning preferences.</p>
         </div>
-        <a className="button" href={process.env.GITHUB_APP_INSTALL_URL || "#"}>
+        <a className="button" href={getGitHubInstallUrl()}>
           <Plus size={17} />
           Connect New Repository
         </a>
@@ -57,35 +59,61 @@ export default function RepositoriesPage() {
         <span>Showing {repositories.length} repositories</span>
       </section>
 
-      <section className="card repoTable" aria-label="Connected repositories">
-        <div className="repoTableHead">
-          <span>Repository Name</span>
-          <span>GitHub Installation ID</span>
-          <span>Last Scanned</span>
-          <span>Deep Scan Active</span>
-        </div>
-        {repositories.map((repo) => (
-          <article className="repoRow" key={repo.name}>
-            <div className="repoName">
-              <span className="repoIcon">
-                <Github size={18} />
+      {repositories.length === 0 ? (
+        <section className="card emptyState">
+          <Github size={34} />
+          <h2>No repositories connected yet</h2>
+          <p>
+            If you just installed the GitHub App, confirm the webhook delivered in
+            Vercel logs or use the GitHub App setup URL to sync the installation.
+          </p>
+          <a className="button" href={getGitHubInstallUrl()}>
+            <Plus size={17} />
+            Connect Repository
+          </a>
+        </section>
+      ) : (
+        <section className="card repoTable" aria-label="Connected repositories">
+          <div className="repoTableHead">
+            <span>Repository Name</span>
+            <span>GitHub Installation ID</span>
+            <span>Last Scanned</span>
+            <span>Deep Scan Active</span>
+          </div>
+          {repositories.map((repo) => (
+            <article className="repoRow" key={repo.id}>
+              <div className="repoName">
+                <span className="repoIcon">
+                  <Github size={18} />
+                </span>
+                <strong>{repo.repo_name}</strong>
+              </div>
+              <span className="badge">inst_{repo.installation_id}</span>
+              <span>{formatLastScanned(repo.last_scanned_at)}</span>
+              <span className="toggleCell">
+                <button
+                  aria-label={`Toggle scanning for ${repo.repo_name}`}
+                  className="toggle"
+                  data-active={repo.is_active_for_scanning}
+                  type="button"
+                />
+                {repo.is_active_for_scanning ? "On" : "Off"}
               </span>
-              <strong>{repo.name}</strong>
-            </div>
-            <span className="badge">{repo.installationId}</span>
-            <span>{repo.lastScanned}</span>
-            <span className="toggleCell">
-              <button
-                aria-label={`Toggle scanning for ${repo.name}`}
-                className="toggle"
-                data-active={repo.enabled}
-                type="button"
-              />
-              {repo.enabled ? "On" : "Off"}
-            </span>
-          </article>
-        ))}
-      </section>
+            </article>
+          ))}
+        </section>
+      )}
     </DashboardShell>
   );
+}
+
+function formatLastScanned(value: string | null) {
+  if (!value) {
+    return "Not scanned yet";
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }

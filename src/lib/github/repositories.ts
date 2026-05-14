@@ -22,6 +22,12 @@ type GitHubContentItem = {
   content?: string;
 };
 
+export type GitHubInstallationRepository = {
+  id: number;
+  full_name: string;
+  private: boolean;
+};
+
 export async function getInstallationOctokit(installationId: number) {
   const app = createGitHubApp();
   return app.getInstallationOctokit(installationId);
@@ -44,6 +50,36 @@ export async function fetchRepositoryScanFiles(input: {
 
   const unique = new Map(files.map((file) => [file.path, file]));
   return Array.from(unique.values());
+}
+
+export async function listInstallationRepositories(
+  installationId: number,
+): Promise<GitHubInstallationRepository[]> {
+  const octokit = await getInstallationOctokit(installationId);
+  const repositories: GitHubInstallationRepository[] = [];
+  let page = 1;
+
+  while (page < 11) {
+    const response = await octokit.request("GET /installation/repositories", {
+      per_page: 100,
+      page,
+    });
+    const pageRepositories = response.data.repositories.map((repository) => ({
+      id: repository.id,
+      full_name: repository.full_name,
+      private: repository.private,
+    }));
+
+    repositories.push(...pageRepositories);
+
+    if (pageRepositories.length < 100) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return repositories;
 }
 
 async function fetchPath(
