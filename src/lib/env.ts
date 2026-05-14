@@ -21,7 +21,8 @@ const envSchema = z.object({
     .url()
     .default("https://developers.hubspot.com/changelog/rss.xml"),
   OPENAI_API_KEY: optionalString,
-  OPENAI_MODEL: z.string().default("gpt-4o-mini"),
+  OPENAI_MODEL: z.string().default("gpt-5.4"),
+  OPENAI_BATCH_MODEL: optionalString,
   RESEND_API_KEY: optionalString,
   ALERT_FROM_EMAIL: z.string().default("Sprocky Changedust <alerts@example.com>"),
   GITHUB_ISSUE_LABEL: z.string().default("hubspot-changelog"),

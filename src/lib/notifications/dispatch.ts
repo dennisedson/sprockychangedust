@@ -3,7 +3,13 @@ import { createImpactIssue } from "@/lib/notifications/githubIssue";
 import { sendImpactAlertEmail } from "@/lib/notifications/email";
 import { getNotificationSettings } from "@/lib/notifications/settings";
 import { scanInstalledRepository } from "@/lib/scanner/scanInstalledRepository";
+import type { ScanSignal } from "@/lib/scanner/types";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  assessRepositoryImpact,
+  createRepositoryImpactCacheKey,
+  type RepositoryImpactAssessment,
+} from "@/lib/ai/repositoryImpact";
 
 type RepositoryRow = {
   id: string;
@@ -19,6 +25,16 @@ type ChangelogEntryRow = {
   ai_summary: string;
   ai_severity_level: "red" | "amber" | "green";
   migration_steps: string[] | null;
+  impacted_keywords: string[] | null;
+};
+
+type CachedImpactRow = {
+  has_hubspot_usage: boolean;
+  scan_signals: ScanSignal[] | null;
+  analysis_method: RepositoryImpactAssessment["analysisMethod"] | null;
+  analysis_cache_key: string | null;
+  match_reason: string | null;
+  match_confidence: number | null;
 };
 
 type GitHubIssueLabel =
@@ -35,7 +51,7 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
   const supabase = createSupabaseAdminClient();
   const { data: entry, error: entryError } = await supabase
     .from("changelog_entries")
-    .select("id,title,link,ai_summary,ai_severity_level,migration_steps")
+    .select("id,title,link,ai_summary,ai_severity_level,migration_steps,impacted_keywords")
     .eq("id", changelogEntryId)
     .single<ChangelogEntryRow>();
 
@@ -64,15 +80,43 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
     }
 
     const result = await scanInstalledRepository(repository);
-
-    await supabase.from("repository_impacts").insert({
-      changelog_entry_id: entry.id,
-      installed_repository_id: repository.id,
-      has_hubspot_usage: result.hasHubSpotUsage,
-      scan_signals: result.signals,
+    const impactInput = {
+      repositoryName: repository.repo_name,
+      changelog: {
+        id: entry.id,
+        title: entry.title,
+        summary: entry.ai_summary,
+        severity: entry.ai_severity_level,
+        migrationSteps: entry.migration_steps || [],
+        impactedKeywords: entry.impacted_keywords || [],
+      },
+      signals: result.signals,
+    };
+    const analysisCacheKey = createRepositoryImpactCacheKey(impactInput);
+    const cachedAssessment = await getCachedImpactAssessment({
+      changelogEntryId: entry.id,
+      installedRepositoryId: repository.id,
+      analysisCacheKey,
+    });
+    const assessment =
+      cachedAssessment ||
+      (result.hasHubSpotUsage
+        ? await assessRepositoryImpact(impactInput)
+        : {
+            hasRelevantUsage: false,
+            relevantSignals: [],
+            confidence: 1,
+            reason: "No HubSpot usage signals were detected in the repository.",
+            analysisMethod: "scanner" as const,
+          });
+    await upsertRepositoryImpact({
+      changelogEntryId: entry.id,
+      installedRepositoryId: repository.id,
+      assessment,
+      analysisCacheKey,
     });
 
-    if (!result.hasHubSpotUsage) {
+    if (!assessment.hasRelevantUsage) {
       continue;
     }
 
@@ -84,7 +128,7 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
         severity: entry.ai_severity_level,
         summary: entry.ai_summary,
         repositoryName: repository.repo_name,
-        signals: result.signals,
+        signals: assessment.relevantSignals,
       });
     }
 
@@ -98,7 +142,7 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
         summary: entry.ai_summary,
         severity: entry.ai_severity_level,
         migrationSteps: entry.migration_steps || [],
-        signals: result.signals,
+        signals: assessment.relevantSignals,
       });
       await recordTrackedIssue({
         changelogEntryId: entry.id,
@@ -126,6 +170,60 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
   }
 
   return { notifiedRepositories };
+}
+
+async function getCachedImpactAssessment(input: {
+  changelogEntryId: string;
+  installedRepositoryId: string;
+  analysisCacheKey: string;
+}): Promise<RepositoryImpactAssessment | undefined> {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("repository_impacts")
+    .select(
+      "has_hubspot_usage,scan_signals,analysis_method,analysis_cache_key,match_reason,match_confidence",
+    )
+    .eq("changelog_entry_id", input.changelogEntryId)
+    .eq("installed_repository_id", input.installedRepositoryId)
+    .maybeSingle<CachedImpactRow>();
+
+  if (error || !data || data.analysis_cache_key !== input.analysisCacheKey) {
+    return undefined;
+  }
+
+  return {
+    hasRelevantUsage: data.has_hubspot_usage,
+    relevantSignals: data.scan_signals || [],
+    confidence: Number(data.match_confidence ?? 0.8),
+    reason: data.match_reason || "Cached repository impact assessment.",
+    analysisMethod: data.analysis_method || "scanner",
+  };
+}
+
+async function upsertRepositoryImpact(input: {
+  changelogEntryId: string;
+  installedRepositoryId: string;
+  assessment: RepositoryImpactAssessment;
+  analysisCacheKey: string;
+}) {
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase.from("repository_impacts").upsert(
+    {
+      changelog_entry_id: input.changelogEntryId,
+      installed_repository_id: input.installedRepositoryId,
+      has_hubspot_usage: input.assessment.hasRelevantUsage,
+      scan_signals: input.assessment.relevantSignals,
+      analysis_method: input.assessment.analysisMethod,
+      analysis_cache_key: input.analysisCacheKey,
+      match_reason: input.assessment.reason,
+      match_confidence: input.assessment.confidence,
+    },
+    { onConflict: "changelog_entry_id,installed_repository_id" },
+  );
+
+  if (error) {
+    throw error;
+  }
 }
 
 function mapIssueAssignees(assignees?: GitHubIssueAssignee[] | null) {

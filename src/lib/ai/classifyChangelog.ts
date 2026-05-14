@@ -1,6 +1,6 @@
-import OpenAI from "openai";
+import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
-import { env } from "@/lib/env";
+import { getOpenAIClient, getOpenAIModel } from "@/lib/ai/openaiClient";
 
 export const changelogClassificationSchema = z.object({
   classification: z.enum(["breaking", "enhancement", "informational"]),
@@ -12,40 +12,51 @@ export const changelogClassificationSchema = z.object({
 
 export type ChangelogClassification = z.infer<typeof changelogClassificationSchema>;
 
+const openAiChangelogClassificationSchema = z.object({
+  classification: z.enum(["breaking", "enhancement", "informational"]),
+  severity: z.enum(["red", "amber", "green"]),
+  summary: z.string().min(1),
+  migrationSteps: z.array(z.string()),
+  impactedKeywords: z.array(z.string()),
+});
+
 export async function classifyChangelogEntry(input: {
   title: string;
   content: string;
   link: string;
 }): Promise<ChangelogClassification> {
-  if (!env.OPENAI_API_KEY) {
+  const openai = getOpenAIClient();
+
+  if (!openai) {
     return heuristicClassification(input);
   }
 
-  const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const completion = await openai.chat.completions.create({
-    model: env.OPENAI_MODEL,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content:
-          "Classify HubSpot developer changelog entries for app developers. Return JSON with classification, severity, summary, migrationSteps, and impactedKeywords.",
+  try {
+    const response = await openai.responses.parse({
+      model: getOpenAIModel(),
+      instructions:
+        "Classify HubSpot developer changelog entries for app developers. Return focused JSON with classification, severity, summary, migrationSteps, and impactedKeywords. Keep impactedKeywords specific to product areas, APIs, endpoints, auth flows, SDKs, or CMS features named in the changelog.",
+      input: JSON.stringify(input),
+      text: {
+        format: zodTextFormat(
+          openAiChangelogClassificationSchema,
+          "changelog_classification",
+        ),
       },
-      {
-        role: "user",
-        content: JSON.stringify(input),
-      },
-    ],
-    temperature: 0.2,
-  });
+      max_output_tokens: 900,
+      store: false,
+      user: "sprocky-changedust",
+    });
 
-  const content = completion.choices[0]?.message.content;
+    if (!response.output_parsed) {
+      return heuristicClassification(input);
+    }
 
-  if (!content) {
+    return changelogClassificationSchema.parse(response.output_parsed);
+  } catch (error) {
+    console.error(error);
     return heuristicClassification(input);
   }
-
-  return changelogClassificationSchema.parse(JSON.parse(content));
 }
 
 function heuristicClassification(input: {
