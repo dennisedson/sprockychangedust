@@ -222,6 +222,116 @@
   white-space: nowrap;
 }
 
+.issueCreateControl {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 12px;
+  width: 100%;
+}
+
+.issueCreateLabel {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.repoMultiSelect {
+  position: relative;
+  width: 100%;
+}
+
+.repoMultiSelect summary {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font-weight: 700;
+  list-style: none;
+  min-height: 38px;
+  padding: 0 10px;
+  width: 100%;
+}
+
+.repoMultiSelect summary::-webkit-details-marker {
+  display: none;
+}
+
+.repoMultiSelect summary::after {
+  border-color: var(--muted) transparent transparent;
+  border-style: solid;
+  border-width: 5px 5px 0;
+  content: "";
+  margin-left: auto;
+}
+
+.repoOptionList {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px;
+  position: absolute;
+  width: 100%;
+  z-index: 5;
+}
+
+.repoOptionList label {
+  align-items: center;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.repoOptionList input {
+  flex: 0 0 auto;
+}
+
+.issueButton {
+  background: var(--primary);
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 800;
+  min-height: 38px;
+  padding: 0 12px;
+}
+
+.issueButton:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.issueResults {
+  display: grid;
+  gap: 5px;
+}
+
+.issueResults a {
+  align-items: center;
+  color: var(--green);
+  display: inline-flex;
+  font-weight: 800;
+  gap: 4px;
+}
+
+.issueError {
+  color: var(--red);
+  font-weight: 800;
+}
+
 .emptyState {
   color: var(--muted-strong);
   margin: 0;

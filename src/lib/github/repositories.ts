@@ -96,6 +96,20 @@ export async function listInstallationRepositories(
   return repositories;
 }
 
+export async function getRepositoryDefaultBranch(input: {
+  installationId: number;
+  owner: string;
+  repo: string;
+}) {
+  const octokit = await getInstallationOctokit(input.installationId);
+  const response = await octokit.request("GET /repos/{owner}/{repo}", {
+    owner: input.owner,
+    repo: input.repo,
+  });
+
+  return response.data.default_branch;
+}
+
 async function fetchPath(
   octokit: InstallationOctokit,
   owner: string,

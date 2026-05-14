@@ -53,6 +53,16 @@ type DashboardOverviewProps = {
   repositoryImpacts: RepositoryImpact[];
 };
 
+type IssueCreationResult = {
+  createdIssues?: Array<{
+    issueNumber: number;
+    issueUrl: string;
+    repositoryName: string;
+  }>;
+  errors?: Array<{ repositoryName: string; error: string }>;
+  error?: string;
+};
+
 export function DashboardOverview({
   repositories,
   changelogEntries,
@@ -286,16 +296,147 @@ function EntryList({
             <div className={styles.repoMatches}>
               <span>{matchedRepos.length} matched repos</span>
               {matchedRepos.slice(0, 3).map((repo) => (
-                <a href={getGitHubRepositoryUrl(repo.repo_name)} key={repo.id} rel="noreferrer" target="_blank">
+                <a
+                  href={getGitHubRepositoryUrl(repo.repo_name)}
+                  key={repo.id}
+                  rel="noreferrer"
+                  target="_blank"
+                >
                   {repo.repo_name}
                 </a>
               ))}
+              <IssueCreateControl changelogEntry={entry} repositories={repositories} />
             </div>
           </article>
         );
       })}
     </div>
   );
+}
+
+function IssueCreateControl({
+  changelogEntry,
+  repositories,
+}: {
+  changelogEntry: ChangelogEntry;
+  repositories: Repository[];
+}) {
+  const activeRepositories = repositories.filter((repo) => repo.is_active_for_scanning);
+  const [selectedRepositoryIds, setSelectedRepositoryIds] = useState<string[]>([]);
+  const [isCreatingIssue, setIsCreatingIssue] = useState(false);
+  const [result, setResult] = useState<IssueCreationResult | null>(null);
+  const selectedRepositories = activeRepositories.filter((repo) =>
+    selectedRepositoryIds.includes(repo.id),
+  );
+
+  async function handleCreateIssue() {
+    if (selectedRepositoryIds.length === 0) {
+      return;
+    }
+
+    setIsCreatingIssue(true);
+    setResult(null);
+
+    const response = await fetch("/api/issues", {
+      body: JSON.stringify({
+        changelogEntryId: changelogEntry.id,
+        repositoryIds: selectedRepositoryIds,
+      }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+    const payload = (await response.json()) as IssueCreationResult;
+
+    if (!response.ok) {
+      setResult({ error: payload.error || "Issue creation failed." });
+      setIsCreatingIssue(false);
+      return;
+    }
+
+    setResult(payload);
+    setIsCreatingIssue(false);
+  }
+
+  function handleRepositorySelection(repositoryId: string, isSelected: boolean) {
+    setResult(null);
+    setSelectedRepositoryIds((currentRepositoryIds) =>
+      isSelected
+        ? [...currentRepositoryIds, repositoryId]
+        : currentRepositoryIds.filter((currentRepositoryId) => currentRepositoryId !== repositoryId),
+    );
+  }
+
+  return (
+    <div className={styles.issueCreateControl}>
+      <span className={styles.issueCreateLabel}>Create issue in</span>
+      <details className={styles.repoMultiSelect}>
+        <summary>{getRepositorySelectionLabel(selectedRepositories)}</summary>
+        <div className={styles.repoOptionList}>
+          {activeRepositories.length === 0 ? (
+            <span>No linked repositories</span>
+          ) : (
+            activeRepositories.map((repo) => (
+              <label key={repo.id}>
+                <input
+                  checked={selectedRepositoryIds.includes(repo.id)}
+                  disabled={isCreatingIssue}
+                  onChange={(event) =>
+                    handleRepositorySelection(repo.id, event.target.checked)
+                  }
+                  type="checkbox"
+                />
+                {repo.repo_name}
+              </label>
+            ))
+          )}
+        </div>
+      </details>
+      <button
+        className={styles.issueButton}
+        disabled={selectedRepositoryIds.length === 0 || isCreatingIssue}
+        onClick={handleCreateIssue}
+        type="button"
+      >
+        {getIssueButtonLabel(isCreatingIssue, selectedRepositoryIds.length)}
+      </button>
+      {result?.createdIssues && result.createdIssues.length > 0 ? (
+        <div className={styles.issueResults}>
+          {result.createdIssues.map((issue) => (
+            <a href={issue.issueUrl} key={issue.issueUrl} rel="noreferrer" target="_blank">
+              {issue.repositoryName} #{issue.issueNumber}
+              <ExternalLink size={12} />
+            </a>
+          ))}
+        </div>
+      ) : null}
+      {result?.errors && result.errors.length > 0 ? (
+        <span className={styles.issueError}>{result.errors.length} issue failed.</span>
+      ) : null}
+      {result?.error ? <span className={styles.issueError}>{result.error}</span> : null}
+    </div>
+  );
+}
+
+function getRepositorySelectionLabel(selectedRepositories: Repository[]) {
+  if (selectedRepositories.length === 0) {
+    return "Choose repo";
+  }
+
+  if (selectedRepositories.length === 1) {
+    return selectedRepositories[0].repo_name;
+  }
+
+  return `${selectedRepositories.length} repos selected`;
+}
+
+function getIssueButtonLabel(isCreatingIssue: boolean, repositoryCount: number) {
+  if (isCreatingIssue) {
+    return repositoryCount > 1 ? "Creating issues..." : "Creating issue...";
+  }
+
+  return repositoryCount > 1 ? `Create ${repositoryCount} issues` : "Create issue";
 }
 
 function DetailHeader({
