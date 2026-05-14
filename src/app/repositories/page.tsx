@@ -1,5 +1,6 @@
 import { Github, Plus, RotateCcw, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { RepositoryUsageModal } from "@/components/repositories/RepositoryUsageModal";
 import { scanAllRepositoriesAction, scanRepositoryAction } from "@/app/repositories/actions";
 import { env } from "@/lib/env";
 import { getGitHubInstallUrl } from "@/lib/github/app";
@@ -122,7 +123,9 @@ export default async function RepositoriesPage() {
                 <span className="repoIcon">
                   <Github size={18} />
                 </span>
-                <strong>{repo.repo_name}</strong>
+                <a href={getGitHubRepositoryUrl(repo.repo_name)} rel="noreferrer" target="_blank">
+                  <strong>{repo.repo_name}</strong>
+                </a>
               </div>
               <span className="badge">inst_{repo.installation_id}</span>
               <span>{formatLastScanned(repo.last_scanned_at)}</span>
@@ -165,11 +168,12 @@ function ScanResultCell({ repository }: { repository: RepositoryRow }) {
   }
 
   return (
-    <span className="scanSummary">
-      <span className="badge red">Detected</span>
-      <span>{signals.length} signals</span>
-    </span>
+    <RepositoryUsageModal repositoryName={repository.repo_name} signals={signals} />
   );
+}
+
+function getGitHubRepositoryUrl(repositoryName: string) {
+  return `https://github.com/${repositoryName}`;
 }
 
 function formatLastScanned(value: string | null) {

@@ -3,6 +3,7 @@ export type ScanSignal = {
   kind: "dependency" | "source-pattern";
   label: string;
   severity: "red" | "amber" | "green";
+  line?: number;
   excerpt?: string;
 };
 

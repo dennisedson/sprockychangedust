@@ -79,6 +79,19 @@ select {
   padding: 0 12px;
 }
 
+.iconButton {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--muted-strong);
+  cursor: pointer;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
 .input,
 .textarea,
 .select {
@@ -915,20 +928,117 @@ select {
 
 .repoName,
 .repoActions,
-.scanSummary,
 .toggleCell {
   align-items: center;
   display: flex;
   gap: 12px;
 }
 
+.repoName a:hover,
+.signalFileLink:hover {
+  color: var(--blue);
+  text-decoration: underline;
+}
+
 .repoActions {
   justify-content: space-between;
 }
 
-.scanSummary {
+.scanSummaryButton {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  gap: 12px;
+  padding: 0;
+}
+
+.modalOverlay {
+  align-items: center;
+  background: rgba(20, 31, 45, 0.52);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 50;
+}
+
+.usageModal {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(20, 31, 45, 0.22);
+  max-height: min(82vh, 780px);
+  max-width: 760px;
+  overflow: hidden;
+  width: min(100%, 760px);
+}
+
+.usageModalHeader {
+  align-items: center;
+  border-bottom: 1px solid #edf1f5;
+  display: flex;
+  justify-content: space-between;
+  padding: 22px 24px;
+}
+
+.usageModalHeader h2,
+.usageModalHeader p {
+  margin: 0;
+}
+
+.usageModalHeader p {
   color: var(--muted);
   font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.usageSignalList {
+  display: grid;
+  gap: 14px;
+  max-height: calc(min(82vh, 780px) - 92px);
+  overflow-y: auto;
+  padding: 20px 24px 24px;
+}
+
+.usageSignal {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.usageSignalTopline,
+.signalFileLink {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.signalFileLink {
+  color: var(--muted-strong);
+  font-size: 13px;
+  font-weight: 800;
+  width: fit-content;
+}
+
+.usageSignal pre {
+  background: #f8fafc;
+  border: 1px solid #edf1f5;
+  border-radius: 6px;
+  color: var(--muted-strong);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin: 0;
+  overflow-x: auto;
+  padding: 12px;
+  white-space: pre-wrap;
 }
 
 .settingsStack {
