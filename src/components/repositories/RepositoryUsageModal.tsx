@@ -40,7 +40,7 @@ export function RepositoryUsageModal({
   return (
     <>
       <button className="scanSummaryButton" type="button" onClick={() => setIsOpen(true)}>
-        <span className="badge red">Detected</span>
+        <span className="badge orange">Detected</span>
         <span>{signals.length} signals</span>
       </button>
 

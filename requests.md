@@ -11,6 +11,8 @@ Use this file for ideas, fixes, polish, and product questions that are useful bu
 
 ## Done
 
+- [x] on repositories page, update detected color to a hubspot orange and no signal to greyed out. green and red have conotations of success and failure that are not applicable
+
 ## Notes
 
 - Keep entries short and actionable.

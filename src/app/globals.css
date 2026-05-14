@@ -1,3 +1,4 @@
+/* @workflow_state: REVIEW */
 :root {
   --background: #f4f7fa;
   --foreground: #293b4f;
@@ -9,6 +10,7 @@
   --primary-dark: #e75f45;
   --primary-soft: #fff0ec;
   --blue: #0091ae;
+  --orange: #ff7a59;
   --red: #d93025;
   --amber: #b66b00;
   --green: #1f8a4c;
@@ -164,6 +166,12 @@ select {
   background: #feecec;
   border-color: #ffd0c8;
   color: var(--red);
+}
+
+.badge.orange {
+  background: #fff0ec;
+  border-color: #ffd0c8;
+  color: var(--orange);
 }
 
 .badge.amber {

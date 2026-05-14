@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 import { ExternalLink, Github, Plus, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { RepositoryActionButton } from "@/components/repositories/RepositoryActionButton";
@@ -193,7 +194,7 @@ function ScanResultCell({ repository }: { repository: RepositoryRow }) {
   }
 
   if (!repository.has_hubspot_usage) {
-    return <span className="badge green">No signal</span>;
+    return <span className="badge">No signal</span>;
   }
 
   return (
