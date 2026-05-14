@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 import { createGitHubApp } from "@/lib/github/app";
 import type { RepositoryFile } from "@/lib/scanner/types";
 
@@ -14,20 +15,39 @@ const candidatePaths = [
   "requirements.txt",
   "composer.json",
   "Gemfile",
+  "backend",
+  "backend_functions",
   "docs",
   "documentation",
+  "firebase",
+  "functions",
   "src",
   "src/app",
+  "src/app/api",
+  "src/auth",
+  "src/integrations",
+  "src/lib",
+  "src/pages/api",
+  "src/server",
+  "src/services",
+  "src/utils",
   "app",
   "pages",
   "lib",
   "api",
+  "auth",
+  "integrations",
+  "routes",
+  "server",
+  "services",
+  "utils",
+  "webhooks",
 ];
 
 const scannableDirectoryFilePattern =
   /(?:^|\/)readme(?:\.[^.]+)?$|\.(js|jsx|ts|tsx|py|php|rb|md|mdx|html|hubl|json|yml|yaml)$/i;
 const scannableDirectoryPattern =
-  /(?:^|\/)(app|api|components|docs|documentation|functions|lib|pages|routes|src|webhooks)$|\.functions$/i;
+  /(?:^|\/)(app|api|auth|backend|backend_functions|components|controllers|docs|documentation|firebase|functions|integrations|lib|pages|routes|server|services|src|utils|webhooks|workers)$|\.functions$/i;
 
 type InstallationOctokit = Awaited<ReturnType<ReturnType<typeof createGitHubApp>["getInstallationOctokit"]>>;
 type GitHubContentItem = {
@@ -55,7 +75,7 @@ export async function fetchRepositoryScanFiles(input: {
 }): Promise<RepositoryFile[]> {
   const octokit = await getInstallationOctokit(input.installationId);
   const files: RepositoryFile[] = [];
-  const maxSourceFiles = input.maxSourceFiles ?? 35;
+  const maxSourceFiles = input.maxSourceFiles ?? 80;
 
   for (const path of candidatePaths) {
     const content = await fetchPath(octokit, input.owner, input.repo, path, maxSourceFiles);

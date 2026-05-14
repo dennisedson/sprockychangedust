@@ -16,9 +16,13 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const limit = Number(requestUrl.searchParams.get("limit") || "20");
   const shouldDispatch = requestUrl.searchParams.get("dispatch") !== "false";
+  const forceFreshScan =
+    requestUrl.searchParams.get("freshScan") === "true" ||
+    requestUrl.searchParams.get("forceFreshScan") === "true";
   const result = await backfillStoredChangelogEntries({
     limit: Number.isFinite(limit) && limit > 0 ? limit : 20,
     dispatch: shouldDispatch,
+    forceFreshScan,
   });
 
   return NextResponse.json(result);

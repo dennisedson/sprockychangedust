@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 import type {
   RepositoryFile,
   RepositoryManifest,
@@ -48,6 +49,19 @@ const implementationPatterns: ScanPattern[] = [
     kind: "auth",
     label: "HubSpot OAuth token exchange",
     regex: /\/oauth\/(?:v\d+|2026-03)\/token/i,
+    severity: "red" as const,
+  },
+  {
+    kind: "auth",
+    label: "HubSpot OAuth token metadata endpoint",
+    regex: /\/oauth\/(?:v\d+|2026-03)\/(?:access-tokens|refresh-tokens)(?:\/|\b)/i,
+    severity: "red" as const,
+  },
+  {
+    kind: "auth",
+    label: "HubSpot OAuth app credentials or grant flow",
+    regex:
+      /HUBSPOT_(?:CLIENT_ID|CLIENT_SECRET|REDIRECT_URI|REFRESH_TOKEN)|grant_type\s*[:=]\s*["']?(?:authorization_code|refresh_token|client_credentials)|\b(?:client_id|client_secret|refresh_token|access_token)\b/i,
     severity: "red" as const,
   },
   {

@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 import { classifyChangelogEntry } from "@/lib/ai/classifyChangelog";
 import { fetchHubSpotChangelogFeed } from "@/lib/changelog/rss";
 import { dispatchImpactNotifications } from "@/lib/notifications/dispatch";
@@ -70,6 +71,7 @@ export async function runChangelogMonitor() {
 export async function backfillStoredChangelogEntries(options: {
   limit?: number;
   dispatch?: boolean;
+  forceFreshScan?: boolean;
 } = {}) {
   const supabase = createSupabaseAdminClient();
   const { data: entries, error } = await supabase
@@ -112,7 +114,11 @@ export async function backfillStoredChangelogEntries(options: {
     analyzedEntryIds.push(entry.id);
 
     if (options.dispatch) {
-      dispatches.push(await dispatchImpactNotifications(entry.id));
+      dispatches.push(
+        await dispatchImpactNotifications(entry.id, {
+          forceFreshScan: options.forceFreshScan,
+        }),
+      );
     }
   }
 

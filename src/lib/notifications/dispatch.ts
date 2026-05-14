@@ -59,7 +59,14 @@ type GitHubIssueAssignee = {
   login?: string | null;
 };
 
-export async function dispatchImpactNotifications(changelogEntryId: string) {
+type DispatchImpactNotificationsOptions = {
+  forceFreshScan?: boolean;
+};
+
+export async function dispatchImpactNotifications(
+  changelogEntryId: string,
+  options: DispatchImpactNotificationsOptions = {},
+) {
   const supabase = createSupabaseAdminClient();
   const { data: entry, error: entryError } = await supabase
     .from("changelog_entries")
@@ -107,6 +114,7 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
     const storedManifest = manifestByRepositoryId.get(repository.id);
 
     if (
+      !options.forceFreshScan &&
       storedManifest &&
       !doesRepositoryManifestMatchProfile(impactProfile, storedManifest)
     ) {
@@ -173,6 +181,18 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
       continue;
     }
 
+    const existingIssues = settings.notifyViaGithubIssue
+      ? await listExistingOpenTrackedIssues({
+          changelogEntryId: entry.id,
+          repositoryIds: [repository.id],
+        })
+      : [];
+
+    if (existingIssues.length > 0) {
+      notifiedRepositories.push(repository.repo_name);
+      continue;
+    }
+
     if (settings.notifyViaEmail && settings.emailAddress) {
       await sendImpactAlertEmail({
         to: settings.emailAddress,
@@ -186,16 +206,6 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
     }
 
     if (settings.notifyViaGithubIssue) {
-      const existingIssues = await listExistingOpenTrackedIssues({
-        changelogEntryId: entry.id,
-        repositoryIds: [repository.id],
-      });
-
-      if (existingIssues.length > 0) {
-        notifiedRepositories.push(repository.repo_name);
-        continue;
-      }
-
       const issue = await createImpactIssue({
         installationId: repository.installation_id,
         owner,
