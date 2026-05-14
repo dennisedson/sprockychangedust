@@ -116,6 +116,46 @@
   gap: 12px;
 }
 
+.severityFilter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.severityFilter button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted-strong);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 800;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+}
+
+.severityFilter button[data-active="true"] {
+  background: var(--primary-soft);
+  border-color: #ffb6a6;
+  color: var(--primary-dark);
+}
+
+.severityFilter strong {
+  align-items: center;
+  background: #f4f7fb;
+  border-radius: 999px;
+  color: var(--text);
+  display: inline-flex;
+  font-size: 12px;
+  justify-content: center;
+  min-width: 24px;
+  padding: 2px 7px;
+}
+
 .detailItem,
 .entryItem {
   align-items: center;

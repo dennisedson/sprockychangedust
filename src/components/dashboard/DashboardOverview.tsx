@@ -46,6 +46,8 @@ type RepositoryImpact = {
 };
 
 type DashboardPanel = "repositories" | "critical" | "changelogs";
+type Severity = "red" | "amber" | "green";
+type SeverityFilter = "all" | Severity;
 
 type DashboardOverviewProps = {
   repositories: Repository[];
@@ -62,6 +64,16 @@ type IssueCreationResult = {
   errors?: Array<{ repositoryName: string; error: string }>;
   error?: string;
 };
+
+const severityFilterOptions: Array<{
+  label: string;
+  value: SeverityFilter;
+}> = [
+  { label: "All", value: "all" },
+  { label: "Critical", value: "red" },
+  { label: "Warning", value: "amber" },
+  { label: "Info", value: "green" },
+];
 
 export function DashboardOverview({
   repositories,
@@ -240,6 +252,12 @@ function ChangelogPanel({
   repositories: Repository[];
   repositoryImpacts: RepositoryImpact[];
 }) {
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
+  const filteredEntries =
+    severityFilter === "all"
+      ? changelogEntries
+      : changelogEntries.filter((entry) => getEntrySeverity(entry) === severityFilter);
+
   return (
     <>
       <DetailHeader
@@ -251,13 +269,56 @@ function ChangelogPanel({
       {changelogEntries.length === 0 ? (
         <EmptyState message="No changelog entries have been fetched yet." />
       ) : (
-        <EntryList
-          changelogEntries={changelogEntries}
-          repositories={repositories}
-          repositoryImpacts={repositoryImpacts}
-        />
+        <>
+          <SeverityFilterControl
+            changelogEntries={changelogEntries}
+            selectedSeverity={severityFilter}
+            onSelectSeverity={setSeverityFilter}
+          />
+          {filteredEntries.length === 0 ? (
+            <EmptyState message="No changelog entries match this severity filter." />
+          ) : (
+            <EntryList
+              changelogEntries={filteredEntries}
+              repositories={repositories}
+              repositoryImpacts={repositoryImpacts}
+            />
+          )}
+        </>
       )}
     </>
+  );
+}
+
+function SeverityFilterControl({
+  changelogEntries,
+  selectedSeverity,
+  onSelectSeverity,
+}: {
+  changelogEntries: ChangelogEntry[];
+  selectedSeverity: SeverityFilter;
+  onSelectSeverity: (severity: SeverityFilter) => void;
+}) {
+  return (
+    <div className={styles.severityFilter} aria-label="Filter changelog entries by severity">
+      {severityFilterOptions.map((option) => {
+        const count = getSeverityFilterCount(changelogEntries, option.value);
+        const isSelected = selectedSeverity === option.value;
+
+        return (
+          <button
+            aria-pressed={isSelected}
+            data-active={isSelected}
+            key={option.value}
+            onClick={() => onSelectSeverity(option.value)}
+            type="button"
+          >
+            <span>{option.label}</span>
+            <strong>{count}</strong>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -274,7 +335,7 @@ function EntryList({
     <div className={styles.entryList}>
       {changelogEntries.slice(0, 8).map((entry) => {
         const matchedRepos = getMatchedRepositories(entry.id, repositories, repositoryImpacts);
-        const severity = entry.ai_severity_level || "green";
+        const severity = getEntrySeverity(entry);
 
         return (
           <article className={styles.entryItem} key={entry.id}>
@@ -437,6 +498,18 @@ function getIssueButtonLabel(isCreatingIssue: boolean, repositoryCount: number) 
   }
 
   return repositoryCount > 1 ? `Create ${repositoryCount} issues` : "Create issue";
+}
+
+function getSeverityFilterCount(changelogEntries: ChangelogEntry[], severity: SeverityFilter) {
+  if (severity === "all") {
+    return changelogEntries.length;
+  }
+
+  return changelogEntries.filter((entry) => getEntrySeverity(entry) === severity).length;
+}
+
+function getEntrySeverity(entry: ChangelogEntry): Severity {
+  return entry.ai_severity_level || "green";
 }
 
 function DetailHeader({
