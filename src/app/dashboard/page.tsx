@@ -1,37 +1,105 @@
-import {
-  Activity,
-  AlertTriangle,
-  BellRing,
-  Box,
-  Clock3,
-  Github,
-} from "lucide-react";
+// @workflow_state: REVIEW
+import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
-import { SeverityBadge } from "@/components/dashboard/SeverityBadge";
-import { StatCard } from "@/components/dashboard/StatCard";
+import { env } from "@/lib/env";
+import type { ScanSignal } from "@/lib/scanner/types";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
-const recentAlerts = [
-  {
-    title: "Contacts API v1 sunset reminder",
-    repo: "acme-corp/crm-sync-worker",
-    time: "2 hours ago",
-    severity: "red" as const,
-  },
-  {
-    title: "New CMS source-code API guidance",
-    repo: "hubspot/hubspot-cms-react",
-    time: "4 hours ago",
-    severity: "amber" as const,
-  },
-  {
-    title: "OAuth token metadata update",
-    repo: "sprocky-inc/changedust-core",
-    time: "1 day ago",
-    severity: "green" as const,
-  },
-];
+export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
+type RepositoryRow = {
+  id: string;
+  repo_name: string;
+  is_active_for_scanning: boolean;
+  has_hubspot_usage: boolean;
+  latest_scan_signals: ScanSignal[] | null;
+  last_scanned_at: string | null;
+  created_at: string;
+};
+
+type ChangelogEntryRow = {
+  id: string;
+  title: string;
+  link: string;
+  publication_date: string;
+  status: string;
+  ai_summary: string | null;
+  ai_classification: string | null;
+  ai_severity_level: "red" | "amber" | "green" | null;
+  migration_steps: string[] | null;
+  impacted_keywords: string[] | null;
+};
+
+type RepositoryImpactRow = {
+  id: string;
+  changelog_entry_id: string;
+  installed_repository_id: string;
+  has_hubspot_usage: boolean;
+  scan_signals: ScanSignal[] | null;
+  created_at: string;
+};
+
+async function getDashboardData() {
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    return {
+      repositories: [],
+      changelogEntries: [],
+      repositoryImpacts: [],
+    };
+  }
+
+  const supabase = createSupabaseAdminClient();
+
+  const [repositoriesResult, changelogEntriesResult, repositoryImpactsResult] =
+    await Promise.all([
+      supabase
+        .from("installed_repositories")
+        .select(
+          "id,repo_name,is_active_for_scanning,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
+        )
+        .order("created_at", { ascending: false })
+        .limit(100)
+        .returns<RepositoryRow[]>(),
+      supabase
+        .from("changelog_entries")
+        .select(
+          "id,title,link,publication_date,status,ai_summary,ai_classification,ai_severity_level,migration_steps,impacted_keywords",
+        )
+        .order("publication_date", { ascending: false })
+        .limit(25)
+        .returns<ChangelogEntryRow[]>(),
+      supabase
+        .from("repository_impacts")
+        .select(
+          "id,changelog_entry_id,installed_repository_id,has_hubspot_usage,scan_signals,created_at",
+        )
+        .order("created_at", { ascending: false })
+        .limit(75)
+        .returns<RepositoryImpactRow[]>(),
+    ]);
+
+  if (repositoriesResult.error) {
+    throw repositoriesResult.error;
+  }
+
+  if (changelogEntriesResult.error) {
+    throw changelogEntriesResult.error;
+  }
+
+  if (repositoryImpactsResult.error) {
+    throw repositoryImpactsResult.error;
+  }
+
+  return {
+    repositories: repositoriesResult.data,
+    changelogEntries: changelogEntriesResult.data,
+    repositoryImpacts: repositoryImpactsResult.data,
+  };
+}
+
+export default async function DashboardPage() {
+  const dashboardData = await getDashboardData();
+
   return (
     <DashboardShell active="Dashboard">
       <div className="pageHeader">
@@ -39,76 +107,9 @@ export default function DashboardPage() {
           <h1>Overview</h1>
           <p>Monitor changelog impact across connected GitHub repositories.</p>
         </div>
-        <select className="select compact" defaultValue="7">
-          <option value="7">Last 7 days</option>
-          <option value="30">Last 30 days</option>
-          <option value="90">Last 90 days</option>
-        </select>
       </div>
 
-      <div className="statsGrid">
-        <StatCard icon={Github} title="Connected Repositories" value="24" helper="+2 this month" />
-        <StatCard icon={AlertTriangle} title="Critical Alerts" value="8" helper="+3 this week" />
-        <StatCard icon={BellRing} title="Notifications Sent" value="142" helper="Stable" />
-        <StatCard icon={Clock3} title="Avg Scan Time" value="1.2m" helper="-12s improvement" />
-      </div>
-
-      <div className="dashboardGrid">
-        <section className="card chartCard">
-          <h2>Detection Activity</h2>
-          <div className="barChart" aria-label="Detection activity by weekday">
-            {[12, 19, 15, 25, 33, 10, 8].map((height, index) => (
-              <span
-                aria-label={`${height} detections`}
-                key={height + index}
-                style={{ height: `${height * 6}px` }}
-              />
-            ))}
-          </div>
-          <div className="chartLabels">
-            <span>Mon</span>
-            <span>Tue</span>
-            <span>Wed</span>
-            <span>Thu</span>
-            <span>Fri</span>
-            <span>Sat</span>
-            <span>Sun</span>
-          </div>
-        </section>
-
-        <section className="card activityCard">
-          <div className="sectionTitle">
-            <h2>Recent Alerts</h2>
-            <a href="/repositories">View all</a>
-          </div>
-          <div className="activityList">
-            {recentAlerts.map((alert) => (
-              <article className="activityItem" key={alert.title}>
-                <span className="activityIcon">
-                  <Activity size={18} />
-                </span>
-                <div>
-                  <strong>{alert.title}</strong>
-                  <span>{alert.repo}</span>
-                  <small>{alert.time}</small>
-                </div>
-                <SeverityBadge severity={alert.severity} />
-              </article>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      <section className="card issuePreview">
-        <Box size={22} />
-        <div>
-          <h2>Issue creation is enabled for critical confirmed impacts.</h2>
-          <p>
-            Sprocky will include the changelog source, scan evidence, and migration
-            steps in each generated GitHub issue.
-          </p>
-        </div>
-      </section>
+      <DashboardOverview {...dashboardData} />
     </DashboardShell>
   );
 }

@@ -1,0 +1,265 @@
+/* @workflow_state: REVIEW */
+.statsGrid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 26px;
+}
+
+.statCard {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  justify-content: space-between;
+  min-height: 142px;
+  padding: 26px;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+  width: 100%;
+}
+
+.statCard:hover,
+.statCard[data-active="true"] {
+  border-color: #ffb6a6;
+  box-shadow:
+    0 0 0 3px rgba(255, 122, 89, 0.14),
+    var(--shadow);
+  transform: translateY(-1px);
+}
+
+.statCard:focus-visible {
+  border-color: var(--primary);
+  box-shadow:
+    0 0 0 3px rgba(255, 122, 89, 0.2),
+    var(--shadow);
+  outline: none;
+}
+
+.statCard p {
+  color: var(--muted);
+  font-weight: 800;
+  margin: 0 0 18px;
+}
+
+.statCard strong {
+  display: block;
+  font-size: 34px;
+  margin-bottom: 8px;
+}
+
+.statCard span {
+  align-items: center;
+  color: var(--muted-strong);
+  display: flex;
+  font-size: 13px;
+  gap: 6px;
+}
+
+.statCard span svg {
+  color: var(--primary);
+}
+
+.statCard > svg {
+  color: #9aa9ba;
+  flex: 0 0 auto;
+}
+
+.detailPanel {
+  padding: 26px;
+}
+
+.detailHeader {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+}
+
+.detailHeader span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.detailHeader h2 {
+  font-size: 24px;
+  margin: 0;
+}
+
+.detailHeader a {
+  align-items: center;
+  color: var(--primary);
+  display: inline-flex;
+  font-weight: 800;
+  gap: 6px;
+  text-decoration: none;
+}
+
+.detailList,
+.entryList {
+  display: grid;
+  gap: 12px;
+}
+
+.detailItem,
+.entryItem {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+}
+
+.detailItem {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.entryItem {
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 0.35fr);
+}
+
+.itemIcon {
+  align-items: center;
+  background: #f4f7fb;
+  border-radius: 8px;
+  color: var(--text);
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.itemContent {
+  min-width: 0;
+}
+
+.itemContent a,
+.entryTitleRow a,
+.repoMatches a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.itemContent a,
+.entryTitleRow a {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.itemContent strong,
+.entryTitleRow strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemContent span,
+.entryMeta,
+.repoMatches {
+  color: var(--muted-strong);
+  font-size: 13px;
+}
+
+.entryMain {
+  min-width: 0;
+}
+
+.entryTitleRow {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.entryMain p {
+  color: var(--muted-strong);
+  line-height: 1.55;
+  margin: 8px 0 10px;
+}
+
+.entryMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  text-transform: capitalize;
+}
+
+.repoMatches {
+  align-content: start;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.repoMatches span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.repoMatches a {
+  color: var(--muted-strong);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emptyState {
+  color: var(--muted-strong);
+  margin: 0;
+}
+
+.hubSpotSignalBadge {
+  background: #fff0ec;
+  border-color: #ffd0c8;
+  color: #ff7a59;
+}
+
+@media (max-width: 1100px) {
+  .statsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .entryItem {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailHeader,
+  .entryTitleRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .detailItem {
+    align-items: flex-start;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .detailItem > :last-child {
+    grid-column: 2;
+  }
+}
