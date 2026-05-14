@@ -209,6 +209,48 @@ select {
   transform: translateX(20px);
 }
 
+.toggleInput {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.toggleIndicator {
+  align-items: center;
+  background: #dfe5ec;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 3px;
+  transition: background 160ms ease;
+  width: 46px;
+}
+
+.toggleIndicator::before {
+  background: #ffffff;
+  border-radius: 999px;
+  content: "";
+  height: 20px;
+  transform: translateX(0);
+  transition: transform 160ms ease;
+  width: 20px;
+}
+
+.toggleInput:checked + .toggleIndicator {
+  background: var(--primary);
+}
+
+.toggleInput:checked + .toggleIndicator::before {
+  transform: translateX(20px);
+}
+
+.toggleInput:focus-visible + .toggleIndicator {
+  box-shadow: 0 0 0 3px rgba(255, 115, 88, 0.2);
+}
+
 .sr-only {
   height: 1px;
   margin: -1px;

@@ -1,7 +1,13 @@
 import { Github, Mail } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { saveNotificationSettingsAction } from "@/app/settings/actions";
+import { getNotificationSettings } from "@/lib/notifications/settings";
 
-export default function SettingsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function SettingsPage() {
+  const settings = await getNotificationSettings();
+
   return (
     <DashboardShell active="Settings">
       <div className="pageHeader">
@@ -11,7 +17,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <form className="settingsStack">
+      <form action={saveNotificationSettingsAction} className="settingsStack">
         <section className="card settingsCard">
           <div className="settingsTitle">
             <span className="featureIcon">
@@ -20,12 +26,24 @@ export default function SettingsPage() {
             <h2>Email Notifications</h2>
           </div>
           <label className="settingToggle">
-            <button className="toggle" data-active="true" type="button" />
+            <input
+              className="toggleInput"
+              defaultChecked={settings.notifyViaEmail}
+              name="notifyViaEmail"
+              type="checkbox"
+            />
+            <span className="toggleIndicator" />
             Enable email notifications for critical and warning HubSpot changelog alerts
           </label>
           <label className="field">
             Primary Notification Email Address
-            <input className="input" defaultValue="alex@hubspot.com" type="email" />
+            <input
+              className="input"
+              defaultValue={settings.emailAddress || ""}
+              name="emailAddress"
+              placeholder="you@example.com"
+              type="email"
+            />
           </label>
         </section>
 
@@ -37,7 +55,13 @@ export default function SettingsPage() {
             <h2>GitHub Issue Notifications</h2>
           </div>
           <label className="settingToggle">
-            <button className="toggle" data-active="true" type="button" />
+            <input
+              className="toggleInput"
+              defaultChecked={settings.notifyViaGithubIssue}
+              name="notifyViaGithubIssue"
+              type="checkbox"
+            />
+            <span className="toggleIndicator" />
             Automatically create detailed GitHub issues in impacted repositories
           </label>
           <p>
@@ -46,7 +70,7 @@ export default function SettingsPage() {
           </p>
         </section>
 
-        <button className="button saveButton" type="button">
+        <button className="button saveButton" type="submit">
           Save Preferences
         </button>
       </form>

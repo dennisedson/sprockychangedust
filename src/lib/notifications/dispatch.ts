@@ -1,5 +1,6 @@
 import { createImpactIssue } from "@/lib/notifications/githubIssue";
 import { sendImpactAlertEmail } from "@/lib/notifications/email";
+import { getNotificationSettings } from "@/lib/notifications/settings";
 import { scanInstalledRepository } from "@/lib/scanner/scanInstalledRepository";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -42,6 +43,7 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
   }
 
   const notifiedRepositories: string[] = [];
+  const settings = await getNotificationSettings();
 
   for (const repository of repositories) {
     const [owner, repo] = repository.repo_name.split("/");
@@ -63,19 +65,9 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
       continue;
     }
 
-    const { data: settings } = await supabase
-      .from("user_notification_settings")
-      .select("email_address,notify_via_email,notify_via_github_issue")
-      .limit(1)
-      .maybeSingle<{
-        email_address: string | null;
-        notify_via_email: boolean;
-        notify_via_github_issue: boolean;
-      }>();
-
-    if (settings?.notify_via_email && settings.email_address) {
+    if (settings.notifyViaEmail && settings.emailAddress) {
       await sendImpactAlertEmail({
-        to: settings.email_address,
+        to: settings.emailAddress,
         changelogTitle: entry.title,
         changelogUrl: entry.link,
         severity: entry.ai_severity_level,
@@ -85,7 +77,7 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
       });
     }
 
-    if (settings?.notify_via_github_issue) {
+    if (settings.notifyViaGithubIssue) {
       await createImpactIssue({
         installationId: repository.installation_id,
         owner,
