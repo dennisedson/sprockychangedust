@@ -2,6 +2,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -9,6 +10,8 @@ import {
   ExternalLink,
   Github,
 } from "lucide-react";
+import { TrackedIssueList } from "@/components/issues/TrackedIssueList";
+import type { TrackedIssueDisplay } from "@/lib/issues/trackedIssues";
 import type { ScanSignal } from "@/lib/scanner/types";
 import { SeverityBadge } from "@/components/dashboard/SeverityBadge";
 import styles from "./DashboardOverview.module.css";
@@ -53,6 +56,7 @@ type DashboardOverviewProps = {
   repositories: Repository[];
   changelogEntries: ChangelogEntry[];
   repositoryImpacts: RepositoryImpact[];
+  trackedIssues: TrackedIssueDisplay[];
 };
 
 type IssueCreationResult = {
@@ -61,6 +65,7 @@ type IssueCreationResult = {
     issueUrl: string;
     repositoryName: string;
   }>;
+  existingIssues?: TrackedIssueDisplay[];
   errors?: Array<{ repositoryName: string; error: string }>;
   error?: string;
 };
@@ -79,6 +84,7 @@ export function DashboardOverview({
   repositories,
   changelogEntries,
   repositoryImpacts,
+  trackedIssues,
 }: DashboardOverviewProps) {
   const activeRepositories = repositories.filter((repo) => repo.is_active_for_scanning);
   const hubSpotRepositories = repositories.filter((repo) => repo.has_hubspot_usage);
@@ -158,6 +164,7 @@ export function DashboardOverview({
             changelogEntries={criticalChangelogs}
             repositories={repositories}
             repositoryImpacts={repositoryImpacts}
+            trackedIssues={trackedIssues}
           />
         ) : null}
         {activePanel === "changelogs" ? (
@@ -165,6 +172,7 @@ export function DashboardOverview({
             changelogEntries={changelogEntries}
             repositories={repositories}
             repositoryImpacts={repositoryImpacts}
+            trackedIssues={trackedIssues}
           />
         ) : null}
       </section>
@@ -217,10 +225,12 @@ function CriticalPanel({
   changelogEntries,
   repositories,
   repositoryImpacts,
+  trackedIssues,
 }: {
   changelogEntries: ChangelogEntry[];
   repositories: Repository[];
   repositoryImpacts: RepositoryImpact[];
+  trackedIssues: TrackedIssueDisplay[];
 }) {
   return (
     <>
@@ -237,6 +247,7 @@ function CriticalPanel({
           changelogEntries={changelogEntries}
           repositories={repositories}
           repositoryImpacts={repositoryImpacts}
+          trackedIssues={trackedIssues}
         />
       )}
     </>
@@ -247,10 +258,12 @@ function ChangelogPanel({
   changelogEntries,
   repositories,
   repositoryImpacts,
+  trackedIssues,
 }: {
   changelogEntries: ChangelogEntry[];
   repositories: Repository[];
   repositoryImpacts: RepositoryImpact[];
+  trackedIssues: TrackedIssueDisplay[];
 }) {
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const filteredEntries =
@@ -282,6 +295,7 @@ function ChangelogPanel({
               changelogEntries={filteredEntries}
               repositories={repositories}
               repositoryImpacts={repositoryImpacts}
+              trackedIssues={trackedIssues}
             />
           )}
         </>
@@ -326,16 +340,19 @@ function EntryList({
   changelogEntries,
   repositories,
   repositoryImpacts,
+  trackedIssues,
 }: {
   changelogEntries: ChangelogEntry[];
   repositories: Repository[];
   repositoryImpacts: RepositoryImpact[];
+  trackedIssues: TrackedIssueDisplay[];
 }) {
   return (
     <div className={styles.entryList}>
       {changelogEntries.slice(0, 8).map((entry) => {
         const matchedRepos = getMatchedRepositories(entry.id, repositories, repositoryImpacts);
         const severity = getEntrySeverity(entry);
+        const activeIssues = getTrackedIssuesForEntry(entry.id, trackedIssues);
 
         return (
           <article className={styles.entryItem} key={entry.id}>
@@ -353,6 +370,7 @@ function EntryList({
                 <span>{formatStatus(entry.status)}</span>
                 <span>{formatClassification(entry.ai_classification)}</span>
               </div>
+              <TrackedIssueList issues={activeIssues} variant="changelog" />
             </div>
             <div className={styles.repoMatches}>
               <span>{matchedRepos.length} matched repos</span>
@@ -382,6 +400,7 @@ function IssueCreateControl({
   changelogEntry: ChangelogEntry;
   repositories: Repository[];
 }) {
+  const router = useRouter();
   const activeRepositories = repositories.filter((repo) => repo.is_active_for_scanning);
   const [selectedRepositoryIds, setSelectedRepositoryIds] = useState<string[]>([]);
   const [isCreatingIssue, setIsCreatingIssue] = useState(false);
@@ -418,6 +437,7 @@ function IssueCreateControl({
 
     setResult(payload);
     setIsCreatingIssue(false);
+    router.refresh();
   }
 
   function handleRepositorySelection(repositoryId: string, isSelected: boolean) {
@@ -467,6 +487,16 @@ function IssueCreateControl({
           {result.createdIssues.map((issue) => (
             <a href={issue.issueUrl} key={issue.issueUrl} rel="noreferrer" target="_blank">
               {issue.repositoryName} #{issue.issueNumber}
+              <ExternalLink size={12} />
+            </a>
+          ))}
+        </div>
+      ) : null}
+      {result?.existingIssues && result.existingIssues.length > 0 ? (
+        <div className={styles.issueResults}>
+          {result.existingIssues.map((issue) => (
+            <a href={issue.issueUrl} key={issue.id} rel="noreferrer" target="_blank">
+              {issue.repositoryName} #{issue.issueNumber} already tracked
               <ExternalLink size={12} />
             </a>
           ))}
@@ -565,6 +595,13 @@ function getMatchedRepositories(
   );
 
   return repositories.filter((repo) => impactedRepositoryIds.has(repo.id));
+}
+
+function getTrackedIssuesForEntry(
+  changelogEntryId: string,
+  trackedIssues: TrackedIssueDisplay[],
+) {
+  return trackedIssues.filter((issue) => issue.changelogEntryId === changelogEntryId);
 }
 
 function getGitHubRepositoryUrl(repositoryName: string) {

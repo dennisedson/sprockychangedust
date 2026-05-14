@@ -1,0 +1,55 @@
+/* @workflow_state: REVIEW */
+.issueList {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+}
+
+.issueItem {
+  align-items: center;
+  background: #fff8f5;
+  border: 1px solid #ffd8ce;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 8px 10px;
+}
+
+.issueItem a {
+  align-items: center;
+  color: var(--text);
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+  text-decoration: none;
+}
+
+.issueItem a span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issueItem a strong {
+  color: var(--primary-dark);
+  flex: 0 0 auto;
+}
+
+.issueItem button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #ffd0c8;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 13px;
+}

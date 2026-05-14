@@ -998,7 +998,7 @@ select {
   align-items: center;
   display: grid;
   gap: 18px;
-  grid-template-columns: 2fr 1.45fr 1.35fr 1fr 0.85fr;
+  grid-template-columns: 1.7fr 1.2fr 1.2fr 0.9fr 1.25fr 0.75fr;
   padding: 18px 26px;
 }
 

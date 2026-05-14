@@ -1,8 +1,13 @@
 // @workflow_state: REVIEW
 import { ExternalLink, Github, Plus, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { TrackedIssueList } from "@/components/issues/TrackedIssueList";
 import { RepositoryActionButton } from "@/components/repositories/RepositoryActionButton";
 import { RepositoryUsageModal } from "@/components/repositories/RepositoryUsageModal";
+import {
+  listOpenTrackedIssues,
+  type TrackedIssueDisplay,
+} from "@/lib/issues/trackedIssues";
 import {
   disconnectRepositoryAction,
   reconnectRepositoryAction,
@@ -70,6 +75,7 @@ async function getRepositories() {
 
 export default async function RepositoriesPage() {
   const repositories = await getRepositories();
+  const trackedIssues = await listOpenTrackedIssues();
 
   return (
     <DashboardShell active="Repositories">
@@ -118,6 +124,7 @@ export default async function RepositoriesPage() {
             <span>Connection</span>
             <span>Last Scanned</span>
             <span>HubSpot Usage</span>
+            <span>Open Issues</span>
             <span>Actions</span>
           </div>
           {repositories.map((repo) => (
@@ -142,6 +149,7 @@ export default async function RepositoriesPage() {
               <ConnectionCell repository={repo} />
               <span>{formatLastScanned(repo.last_scanned_at)}</span>
               <ScanResultCell repository={repo} />
+              <OpenIssuesCell repository={repo} trackedIssues={trackedIssues} />
               <div className="repoActions">
                 <form action={scanRepositoryAction}>
                   <input name="repositoryId" type="hidden" value={repo.id} />
@@ -159,6 +167,22 @@ export default async function RepositoriesPage() {
         </section>
       )}
     </DashboardShell>
+  );
+}
+
+function OpenIssuesCell({
+  repository,
+  trackedIssues,
+}: {
+  repository: RepositoryRow;
+  trackedIssues: TrackedIssueDisplay[];
+}) {
+  return (
+    <TrackedIssueList
+      emptyLabel="No open issues"
+      issues={trackedIssues.filter((issue) => issue.installedRepositoryId === repository.id)}
+      variant="repository"
+    />
   );
 }
 

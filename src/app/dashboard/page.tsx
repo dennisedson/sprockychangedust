@@ -2,6 +2,7 @@
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { env } from "@/lib/env";
+import { listOpenTrackedIssues } from "@/lib/issues/trackedIssues";
 import type { ScanSignal } from "@/lib/scanner/types";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -45,6 +46,7 @@ async function getDashboardData() {
       repositories: [],
       changelogEntries: [],
       repositoryImpacts: [],
+      trackedIssues: [],
     };
   }
 
@@ -94,6 +96,7 @@ async function getDashboardData() {
     repositories: repositoriesResult.data,
     changelogEntries: changelogEntriesResult.data,
     repositoryImpacts: repositoryImpactsResult.data,
+    trackedIssues: await listOpenTrackedIssues(),
   };
 }
 

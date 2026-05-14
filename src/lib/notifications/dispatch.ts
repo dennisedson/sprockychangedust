@@ -1,3 +1,4 @@
+import { recordTrackedIssue } from "@/lib/issues/trackedIssues";
 import { createImpactIssue } from "@/lib/notifications/githubIssue";
 import { sendImpactAlertEmail } from "@/lib/notifications/email";
 import { getNotificationSettings } from "@/lib/notifications/settings";
@@ -78,7 +79,7 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
     }
 
     if (settings.notifyViaGithubIssue) {
-      await createImpactIssue({
+      const issue = await createImpactIssue({
         installationId: repository.installation_id,
         owner,
         repo,
@@ -88,6 +89,15 @@ export async function dispatchImpactNotifications(changelogEntryId: string) {
         severity: entry.ai_severity_level,
         migrationSteps: entry.migration_steps || [],
         signals: result.signals,
+      });
+      await recordTrackedIssue({
+        changelogEntryId: entry.id,
+        installedRepositoryId: repository.id,
+        githubIssueId: issue.data.id,
+        githubIssueNumber: issue.data.number,
+        githubIssueUrl: issue.data.html_url,
+        githubIssueState: issue.data.state === "closed" ? "closed" : "open",
+        closedAt: issue.data.closed_at,
       });
     }
 

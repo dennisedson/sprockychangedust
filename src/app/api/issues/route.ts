@@ -1,6 +1,12 @@
 // @workflow_state: REVIEW
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import {
+  dismissTrackedIssue,
+  isMissingTrackedIssuesTableError,
+  listExistingOpenTrackedIssues,
+  recordTrackedIssue,
+} from "@/lib/issues/trackedIssues";
 import { createImpactIssue } from "@/lib/notifications/githubIssue";
 import type { ScanSignal } from "@/lib/scanner/types";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -8,6 +14,9 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 const issueRequestSchema = z.object({
   changelogEntryId: z.string().uuid(),
   repositoryIds: z.array(z.string().uuid()).min(1).max(25),
+});
+const dismissIssueRequestSchema = z.object({
+  trackedIssueId: z.string().uuid(),
 });
 
 type ChangelogEntryRow = {
@@ -79,6 +88,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No repositories were found." }, { status: 404 });
   }
 
+  let existingIssues;
+
+  try {
+    existingIssues = await listExistingOpenTrackedIssues({
+      changelogEntryId,
+      repositoryIds,
+    });
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      isMissingTrackedIssuesTableError(error)
+    ) {
+      return NextResponse.json(
+        { error: "Issue tracking is not configured. Run the tracked issues migration." },
+        { status: 500 },
+      );
+    }
+
+    throw error;
+  }
+  const repositoryIdsWithExistingIssues = new Set(
+    existingIssues.map((issue) => issue.installedRepositoryId),
+  );
   const impactSignalsByRepositoryId = new Map<string, ScanSignal[]>();
 
   for (const impact of impactResult.data) {
@@ -95,6 +128,10 @@ export async function POST(request: Request) {
   const errors: Array<{ repositoryName: string; error: string }> = [];
 
   for (const repository of repositoryResult.data) {
+    if (repositoryIdsWithExistingIssues.has(repository.id)) {
+      continue;
+    }
+
     if (!repository.is_active_for_scanning) {
       errors.push({
         repositoryName: repository.repo_name,
@@ -127,6 +164,16 @@ export async function POST(request: Request) {
           impactSignalsByRepositoryId.get(repository.id) || repository.latest_scan_signals || [],
       });
 
+      await recordTrackedIssue({
+        changelogEntryId: entryResult.data.id,
+        installedRepositoryId: repository.id,
+        githubIssueId: issue.data.id,
+        githubIssueNumber: issue.data.number,
+        githubIssueUrl: issue.data.html_url,
+        githubIssueState: issue.data.state === "closed" ? "closed" : "open",
+        closedAt: issue.data.closed_at,
+      });
+
       createdIssues.push({
         issueNumber: issue.data.number,
         issueUrl: issue.data.html_url,
@@ -141,7 +188,7 @@ export async function POST(request: Request) {
     }
   }
 
-  if (createdIssues.length === 0) {
+  if (createdIssues.length === 0 && existingIssues.length === 0) {
     return NextResponse.json(
       {
         error: errors[0]?.error || "No issues were created.",
@@ -153,6 +200,31 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     createdIssues,
+    existingIssues,
     errors,
   });
+}
+
+export async function PATCH(request: Request) {
+  const payload = dismissIssueRequestSchema.safeParse(await request.json());
+
+  if (!payload.success) {
+    return NextResponse.json({ error: "Invalid dismiss request." }, { status: 400 });
+  }
+
+  try {
+    await dismissTrackedIssue(payload.data.trackedIssueId);
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      isMissingTrackedIssuesTableError(error)
+    ) {
+      return NextResponse.json({ error: "Issue tracking is not configured." }, { status: 500 });
+    }
+
+    throw error;
+  }
+
+  return NextResponse.json({ ok: true });
 }

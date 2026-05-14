@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  handleGitHubIssueWebhook,
   handleGitHubRepositoryWebhook,
   handleGitHubInstallationWebhook,
   verifyGitHubWebhookSignature,
@@ -8,7 +9,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const handledEvents = new Set(["installation", "installation_repositories", "repository"]);
+const handledEvents = new Set(["installation", "installation_repositories", "issues", "repository"]);
 
 export async function POST(request: Request) {
   const payload = await request.text();
@@ -24,7 +25,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: event });
   }
 
-  if (event === "repository") {
+  if (event === "issues") {
+    await handleGitHubIssueWebhook(JSON.parse(payload));
+  } else if (event === "repository") {
     await handleGitHubRepositoryWebhook(JSON.parse(payload));
   } else {
     await handleGitHubInstallationWebhook(JSON.parse(payload));

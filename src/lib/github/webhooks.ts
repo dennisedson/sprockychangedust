@@ -5,6 +5,7 @@ import {
   type GitHubInstallationRepository,
   listInstallationRepositories,
 } from "@/lib/github/repositories";
+import { updateTrackedIssueStateFromGitHub } from "@/lib/issues/trackedIssues";
 import { scanInstalledRepositoriesByGithubRepoIds } from "@/lib/scanner/scanInstalledRepository";
 
 const initialScanLimit = 25;
@@ -58,6 +59,17 @@ type RepositoryWebhookPayload = {
     owner?: {
       login?: string;
     };
+  };
+};
+
+type IssueWebhookPayload = {
+  action: string;
+  issue: {
+    id: number;
+    number: number;
+    html_url: string;
+    state: "open" | "closed";
+    closed_at: string | null;
   };
 };
 
@@ -118,6 +130,20 @@ export async function handleGitHubRepositoryWebhook(payload: RepositoryWebhookPa
       limit: initialScanLimit,
     });
   }
+}
+
+export async function handleGitHubIssueWebhook(payload: IssueWebhookPayload) {
+  if (!["closed", "reopened", "edited"].includes(payload.action)) {
+    return;
+  }
+
+  await updateTrackedIssueStateFromGitHub({
+    githubIssueId: payload.issue.id,
+    issueNumber: payload.issue.number,
+    issueUrl: payload.issue.html_url,
+    issueState: payload.issue.state,
+    closedAt: payload.issue.closed_at,
+  });
 }
 
 export async function syncInstallationRepositories(installationId: number) {
