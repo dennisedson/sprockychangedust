@@ -1,7 +1,13 @@
-import { Github, Plus, RotateCcw, Search } from "lucide-react";
+import { ExternalLink, Github, Plus, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { RepositoryActionButton } from "@/components/repositories/RepositoryActionButton";
 import { RepositoryUsageModal } from "@/components/repositories/RepositoryUsageModal";
-import { scanAllRepositoriesAction, scanRepositoryAction } from "@/app/repositories/actions";
+import {
+  disconnectRepositoryAction,
+  reconnectRepositoryAction,
+  scanAllRepositoriesAction,
+  scanRepositoryAction,
+} from "@/app/repositories/actions";
 import { env } from "@/lib/env";
 import { getGitHubInstallUrl } from "@/lib/github/app";
 import { isMissingRepositoryScanColumnError } from "@/lib/scanner/scanInstalledRepository";
@@ -12,7 +18,6 @@ export const dynamic = "force-dynamic";
 
 type RepositoryRow = {
   id: string;
-  installation_id: number;
   repo_name: string;
   is_active_for_scanning: boolean;
   has_hubspot_usage: boolean;
@@ -32,7 +37,7 @@ async function getRepositories() {
   const { data, error } = await supabase
     .from("installed_repositories")
     .select(
-      "id,installation_id,repo_name,is_active_for_scanning,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
+      "id,repo_name,is_active_for_scanning,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
     )
     .order("created_at", { ascending: false })
     .returns<RepositoryRow[]>();
@@ -41,7 +46,7 @@ async function getRepositories() {
     if (isMissingRepositoryScanColumnError(error)) {
       const { data: fallbackData, error: fallbackError } = await supabase
         .from("installed_repositories")
-        .select("id,installation_id,repo_name,is_active_for_scanning,last_scanned_at,created_at")
+        .select("id,repo_name,is_active_for_scanning,last_scanned_at,created_at")
         .order("created_at", { ascending: false })
         .returns<BaseRepositoryRow[]>();
 
@@ -74,10 +79,7 @@ export default async function RepositoriesPage() {
         </div>
         <div className="pageActions">
           <form action={scanAllRepositoriesAction}>
-            <button className="button secondary" type="submit">
-              <RotateCcw size={17} />
-              Run Scan Now
-            </button>
+            <RepositoryActionButton icon="scan" label="Run Scan Now" pendingLabel="Scanning..." />
           </form>
           <a className="button" href={getGitHubInstallUrl()}>
             <Plus size={17} />
@@ -90,7 +92,7 @@ export default async function RepositoriesPage() {
         <label className="tableSearch">
           <Search size={18} />
           <span className="sr-only">Search repositories</span>
-          <input placeholder="Search repositories or installation IDs..." />
+          <input placeholder="Search repositories..." />
         </label>
         <span>Showing {repositories.length} repositories</span>
       </section>
@@ -112,7 +114,7 @@ export default async function RepositoriesPage() {
         <section className="card repoTable" aria-label="Connected repositories">
           <div className="repoTableHead">
             <span>Repository Name</span>
-            <span>GitHub Installation ID</span>
+            <span>Connection</span>
             <span>Last Scanned</span>
             <span>HubSpot Usage</span>
             <span>Actions</span>
@@ -123,29 +125,32 @@ export default async function RepositoriesPage() {
                 <span className="repoIcon">
                   <Github size={18} />
                 </span>
-                <a href={getGitHubRepositoryUrl(repo.repo_name)} rel="noreferrer" target="_blank">
+                <a
+                  className="repoLink"
+                  href={getGitHubRepositoryUrl(repo.repo_name)}
+                  rel="noreferrer"
+                  target="_blank"
+                >
                   <strong>{repo.repo_name}</strong>
+                  <span className="linkedBadge">
+                    <ExternalLink size={12} />
+                    GitHub
+                  </span>
                 </a>
               </div>
-              <span className="badge">inst_{repo.installation_id}</span>
+              <ConnectionCell repository={repo} />
               <span>{formatLastScanned(repo.last_scanned_at)}</span>
               <ScanResultCell repository={repo} />
               <div className="repoActions">
-                <span className="toggleCell">
-                  <button
-                    aria-label={`Toggle scanning for ${repo.repo_name}`}
-                    className="toggle"
-                    data-active={repo.is_active_for_scanning}
-                    type="button"
-                  />
-                  {repo.is_active_for_scanning ? "On" : "Off"}
-                </span>
                 <form action={scanRepositoryAction}>
                   <input name="repositoryId" type="hidden" value={repo.id} />
-                  <button className="button secondary smallButton" type="submit">
-                    <RotateCcw size={15} />
-                    Scan
-                  </button>
+                  <RepositoryActionButton
+                    disabled={!repo.is_active_for_scanning}
+                    icon="scan"
+                    label="Scan"
+                    pendingLabel="Scanning..."
+                    size="small"
+                  />
                 </form>
               </div>
             </article>
@@ -153,6 +158,30 @@ export default async function RepositoriesPage() {
         </section>
       )}
     </DashboardShell>
+  );
+}
+
+function ConnectionCell({ repository }: { repository: RepositoryRow }) {
+  const action = repository.is_active_for_scanning
+    ? disconnectRepositoryAction
+    : reconnectRepositoryAction;
+
+  return (
+    <div className="connectionCell">
+      <span className={`badge ${repository.is_active_for_scanning ? "green" : ""}`}>
+        {repository.is_active_for_scanning ? "Linked" : "Disconnected"}
+      </span>
+      <form action={action}>
+        <input name="repositoryId" type="hidden" value={repository.id} />
+        <RepositoryActionButton
+          icon={repository.is_active_for_scanning ? "disconnect" : "reconnect"}
+          label={repository.is_active_for_scanning ? "Disconnect" : "Reconnect"}
+          pendingLabel={repository.is_active_for_scanning ? "Disconnecting..." : "Reconnecting..."}
+          size="small"
+          tone={repository.is_active_for_scanning ? "danger" : "default"}
+        />
+      </form>
+    </div>
   );
 }
 

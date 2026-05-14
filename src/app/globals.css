@@ -61,10 +61,24 @@ select {
   background: var(--primary-dark);
 }
 
+.button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .button.secondary {
   background: #ffffff;
   border: 1px solid var(--line);
   color: var(--foreground);
+}
+
+.button.secondary.danger {
+  border-color: #ffd0c8;
+  color: var(--red);
+}
+
+.button.secondary.danger:hover {
+  background: #feecec;
 }
 
 .button.ghost {
@@ -90,6 +104,21 @@ select {
   height: 36px;
   justify-content: center;
   width: 36px;
+}
+
+.spinner {
+  animation: spin 800ms linear infinite;
+  border: 2px solid rgba(66, 82, 107, 0.22);
+  border-top-color: var(--muted-strong);
+  border-radius: 999px;
+  height: 16px;
+  width: 16px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .input,
@@ -909,7 +938,7 @@ select {
   align-items: center;
   display: grid;
   gap: 18px;
-  grid-template-columns: 2fr 1.3fr 1.35fr 1fr 1.4fr;
+  grid-template-columns: 2fr 1.45fr 1.35fr 1fr 0.85fr;
   padding: 18px 26px;
 }
 
@@ -927,11 +956,35 @@ select {
 }
 
 .repoName,
+.connectionCell,
 .repoActions,
 .toggleCell {
   align-items: center;
   display: flex;
   gap: 12px;
+}
+
+.repoLink,
+.linkedBadge {
+  align-items: center;
+  display: inline-flex;
+}
+
+.repoLink {
+  gap: 10px;
+  min-width: 0;
+}
+
+.linkedBadge {
+  background: #eaf7ef;
+  border: 1px solid #bae5c8;
+  border-radius: 999px;
+  color: var(--green);
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 800;
+  gap: 4px;
+  padding: 3px 7px;
 }
 
 .repoName a:hover,
@@ -941,7 +994,11 @@ select {
 }
 
 .repoActions {
-  justify-content: space-between;
+  justify-content: flex-start;
+}
+
+.connectionCell {
+  flex-wrap: wrap;
 }
 
 .scanSummaryButton {
