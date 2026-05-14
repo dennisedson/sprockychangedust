@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { saveNotificationSettings } from "@/lib/notifications/settings";
 
@@ -20,4 +21,5 @@ export async function saveNotificationSettingsAction(formData: FormData) {
 
   await saveNotificationSettings(settings);
   revalidatePath("/settings");
+  redirect("/settings?saved=1");
 }

@@ -1,12 +1,19 @@
 import { Github, Mail } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { SettingsSaveButton } from "@/components/settings/SettingsSaveButton";
 import { saveNotificationSettingsAction } from "@/app/settings/actions";
 import { getNotificationSettings } from "@/lib/notifications/settings";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ saved?: string }>;
+}) {
+  const params = searchParams ? await searchParams : {};
   const settings = await getNotificationSettings();
+  const wasSaved = params.saved === "1";
 
   return (
     <DashboardShell active="Settings">
@@ -18,6 +25,12 @@ export default async function SettingsPage() {
       </div>
 
       <form action={saveNotificationSettingsAction} className="settingsStack">
+        {wasSaved ? (
+          <div className="saveStatus" role="status">
+            Preferences saved.
+          </div>
+        ) : null}
+
         <section className="card settingsCard">
           <div className="settingsTitle">
             <span className="featureIcon">
@@ -70,9 +83,7 @@ export default async function SettingsPage() {
           </p>
         </section>
 
-        <button className="button saveButton" type="submit">
-          Save Preferences
-        </button>
+        <SettingsSaveButton />
       </form>
     </DashboardShell>
   );

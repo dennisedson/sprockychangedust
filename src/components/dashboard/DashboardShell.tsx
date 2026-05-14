@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Route } from "next";
+import { unstable_noStore as noStore } from "next/cache";
 import {
   Bell,
   FolderGit2,
@@ -10,6 +11,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
+import { getNotificationSettings } from "@/lib/notifications/settings";
 
 const navItems: { href: Route; label: string; icon: typeof Grid2X2 }[] = [
   { href: "/dashboard", label: "Dashboard", icon: Grid2X2 },
@@ -18,13 +20,19 @@ const navItems: { href: Route; label: string; icon: typeof Grid2X2 }[] = [
   { href: "/profile", label: "Profile", icon: UserRound },
 ];
 
-export function DashboardShell({
+export async function DashboardShell({
   active,
   children,
 }: {
   active: string;
   children: React.ReactNode;
 }) {
+  noStore();
+
+  const settings = await getNotificationSettings();
+  const emailAddress = settings.emailAddress || "No alert email set";
+  const initials = getInitials(emailAddress);
+
   return (
     <div className="appShell">
       <aside className="sidebar">
@@ -51,11 +59,11 @@ export function DashboardShell({
         </nav>
         <div className="sidebarUser">
           <div className="avatar" aria-hidden="true">
-            AD
+            {initials}
           </div>
           <div>
-            <strong>Alex Developer</strong>
-            <span>alex@hubspot.com</span>
+            <strong>Alert Recipient</strong>
+            <span>{emailAddress}</span>
           </div>
         </div>
       </aside>
@@ -81,4 +89,20 @@ export function DashboardShell({
       </main>
     </div>
   );
+}
+
+function getInitials(emailAddress: string) {
+  if (!emailAddress.includes("@")) {
+    return "SC";
+  }
+
+  const [name] = emailAddress.split("@");
+  const parts = name.split(/[._-]/).filter(Boolean);
+  const initials = parts
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
+  return initials || "SC";
 }

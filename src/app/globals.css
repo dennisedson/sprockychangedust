@@ -597,6 +597,16 @@ select {
   padding: 10px 12px;
 }
 
+.saveStatus {
+  background: #eaf7ef;
+  border: 1px solid #bae5c8;
+  border-radius: var(--radius);
+  color: var(--green);
+  font-size: 14px;
+  font-weight: 800;
+  padding: 12px 14px;
+}
+
 .appShell {
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr);
