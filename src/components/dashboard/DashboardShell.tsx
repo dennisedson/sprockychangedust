@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 import Link from "next/link";
 import type { Route } from "next";
 import { unstable_noStore as noStore } from "next/cache";
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { getNotificationSettings } from "@/lib/notifications/settings";
+import { getCurrentUserProfile } from "@/lib/profile/userProfile";
 
 const navItems: { href: Route; label: string; icon: typeof Grid2X2 }[] = [
   { href: "/dashboard", label: "Dashboard", icon: Grid2X2 },
@@ -29,9 +31,13 @@ export async function DashboardShell({
 }) {
   noStore();
 
-  const settings = await getNotificationSettings();
-  const emailAddress = settings.emailAddress || "No alert email set";
-  const initials = getInitials(emailAddress);
+  const [settings, profile] = await Promise.all([
+    getNotificationSettings(),
+    getCurrentUserProfile(),
+  ]);
+  const emailAddress = settings.emailAddress || profile.email || "No alert email set";
+  const displayName = profile.isAuthenticated ? profile.displayName : "Alert Recipient";
+  const initials = profile.isAuthenticated ? profile.initials : getInitials(emailAddress);
 
   return (
     <div className="appShell">
@@ -62,7 +68,7 @@ export async function DashboardShell({
             {initials}
           </div>
           <div>
-            <strong>Alert Recipient</strong>
+            <strong>{displayName}</strong>
             <span>{emailAddress}</span>
           </div>
         </div>
