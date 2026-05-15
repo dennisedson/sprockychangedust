@@ -1389,6 +1389,37 @@ select {
   gap: 16px;
 }
 
+.settingsIntegrationStatus {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.settingsIntegrationStatus strong {
+  color: var(--foreground);
+  font-size: 14px;
+}
+
+.settingsActionRow {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.settingsActionControl {
+  display: grid;
+  gap: 6px;
+}
+
+.settingsActionControl > span {
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 800;
+  max-width: 420px;
+}
+
 .settingsCard p {
   color: #48658b;
   line-height: 1.55;
