@@ -208,8 +208,7 @@ function RepositoryPanel({ repositories }: { repositories: Repository[] }) {
                   <ExternalLink size={13} />
                 </a>
                 <span>
-                  {repo.is_active_for_scanning ? "Linked" : "Disconnected"} ·{" "}
-                  {formatMonitoringStatus(repo.monitoring_status)} ·{" "}
+                  {getRepositoryStatusLabel(repo)} ·{" "}
                   {repo.last_scanned_at
                     ? `Last scanned ${formatDate(repo.last_scanned_at)}`
                     : "Scan pending"}
@@ -647,6 +646,14 @@ function formatMonitoringStatus(value: Repository["monitoring_status"]) {
   }
 
   return "Needs review";
+}
+
+function getRepositoryStatusLabel(repository: Repository) {
+  if (!repository.is_active_for_scanning) {
+    return "Disconnected";
+  }
+
+  return formatMonitoringStatus(repository.monitoring_status);
 }
 
 function formatClassification(value: string | null) {

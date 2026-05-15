@@ -254,9 +254,7 @@ function OpenIssuesCell({
 function StatusCell({ repository }: { repository: RepositoryRow }) {
   return (
     <div className="statusCell">
-      <span className={`badge ${repository.is_active_for_scanning ? "green" : ""}`}>
-        {repository.is_active_for_scanning ? "Linked" : "Disconnected"}
-      </span>
+      {!repository.is_active_for_scanning ? <span className="badge">Disconnected</span> : null}
       <MonitoringBadge repository={repository} />
     </div>
   );
