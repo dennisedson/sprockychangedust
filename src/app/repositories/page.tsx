@@ -4,6 +4,7 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { IssueAutoRefresh } from "@/components/issues/IssueAutoRefresh";
 import { RepositoryActionButton } from "@/components/repositories/RepositoryActionButton";
 import { RepositoryUsageModal } from "@/components/repositories/RepositoryUsageModal";
+import { SuggestedIssueCreateButton } from "@/components/repositories/SuggestedIssueCreateButton";
 import {
   listVisibleTrackedIssues,
   type TrackedIssueDisplay,
@@ -12,6 +13,7 @@ import {
   disconnectRepositoryAction,
   ignoreRepositoryAction,
   reconnectRepositoryAction,
+  removeRepositoryAction,
   scanAllRepositoriesAction,
   scanRepositoryAction,
   watchRepositoryAction,
@@ -47,6 +49,28 @@ type BaseRepositoryRow = Omit<
   RepositoryRow,
   "has_hubspot_usage" | "latest_scan_signals" | "monitoring_status"
 >;
+
+type IssueSuggestion = {
+  id: string;
+  changelogEntryId: string;
+  installedRepositoryId: string;
+  changelogTitle: string;
+  changelogUrl: string;
+  severity: "red" | "amber" | "green" | null;
+  confidence: number | null;
+};
+
+type RepositoryImpactSuggestionRow = {
+  id: string;
+  changelog_entry_id: string;
+  installed_repository_id: string;
+  match_confidence: number | null;
+  changelog_entries: {
+    title: string;
+    link: string;
+    ai_severity_level: "red" | "amber" | "green" | null;
+  } | null;
+};
 
 async function getRepositories() {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -113,6 +137,7 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
   const repositories = await getRepositories();
   const visibleRepositories = filterRepositories(repositories, activeFilter);
   const trackedIssues = await listVisibleTrackedIssues();
+  const issueSuggestions = await listIssueSuggestions();
 
   return (
     <DashboardShell active="Repositories">
@@ -181,7 +206,7 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
             <span>Status</span>
             <span>Last Scanned</span>
             <span>HubSpot Usage</span>
-            <span>Issues</span>
+            <span>Issue Review</span>
             <span>Actions</span>
           </div>
           {visibleRepositories.map((repo) => (
@@ -205,7 +230,11 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
               <div className="usageCell">
                 <ScanResultCell repository={repo} />
               </div>
-              <OpenIssuesCell repository={repo} trackedIssues={trackedIssues} />
+              <IssueReviewCell
+                issueSuggestions={issueSuggestions}
+                repository={repo}
+                trackedIssues={trackedIssues}
+              />
               <RepositoryActionsCell repository={repo} />
             </article>
           ))}
@@ -216,25 +245,80 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
   );
 }
 
-function OpenIssuesCell({
+async function listIssueSuggestions() {
+  if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    return [];
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("repository_impacts")
+    .select(
+      "id,changelog_entry_id,installed_repository_id,match_confidence,changelog_entries(title,link,ai_severity_level)",
+    )
+    .eq("has_hubspot_usage", true)
+    .order("created_at", { ascending: false })
+    .limit(100)
+    .returns<RepositoryImpactSuggestionRow[]>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data.map((row) => ({
+    id: row.id,
+    changelogEntryId: row.changelog_entry_id,
+    installedRepositoryId: row.installed_repository_id,
+    changelogTitle: row.changelog_entries?.title || "Unknown changelog",
+    changelogUrl: row.changelog_entries?.link || "#",
+    severity: row.changelog_entries?.ai_severity_level || null,
+    confidence: row.match_confidence,
+  }));
+}
+
+function IssueReviewCell({
+  issueSuggestions,
   repository,
   trackedIssues,
 }: {
+  issueSuggestions: IssueSuggestion[];
   repository: RepositoryRow;
   trackedIssues: TrackedIssueDisplay[];
 }) {
   const issues = trackedIssues.filter((issue) => issue.installedRepositoryId === repository.id);
+  const trackedChangelogEntryIds = new Set(issues.map((issue) => issue.changelogEntryId));
+  const suggestions = issueSuggestions.filter(
+    (suggestion) =>
+      suggestion.installedRepositoryId === repository.id &&
+      !trackedChangelogEntryIds.has(suggestion.changelogEntryId),
+  );
 
-  if (issues.length === 0) {
-    return <span className="mutedCellText">No tracked issues</span>;
+  if (suggestions.length === 0 && issues.length === 0) {
+    return <span className="mutedCellText">No suggested issues</span>;
   }
 
   return (
     <details className="issueDisclosure">
       <summary>
-        <span className="badge orange">{issues.length} tracked</span>
+        <span className={suggestions.length > 0 ? "badge orange" : "badge"}>
+          {suggestions.length > 0
+            ? `${suggestions.length} suggested`
+            : `${issues.length} tracked`}
+        </span>
       </summary>
       <div className="issueDisclosureList">
+        {suggestions.map((suggestion) => (
+          <article className="issueSuggestionItem" key={suggestion.id}>
+            <a href={suggestion.changelogUrl} rel="noreferrer" target="_blank">
+              <span>{suggestion.changelogTitle}</span>
+              <small>{formatSuggestionMeta(suggestion)}</small>
+            </a>
+            <SuggestedIssueCreateButton
+              changelogEntryId={suggestion.changelogEntryId}
+              repositoryId={repository.id}
+            />
+          </article>
+        ))}
         {issues.map((issue) => (
           <a href={issue.issueUrl} key={issue.id} rel="noreferrer" target="_blank">
             <span>{issue.changelogTitle}</span>
@@ -288,6 +372,18 @@ function RepositoryActionsCell({ repository }: { repository: RepositoryRow }) {
           pendingLabel={repository.is_active_for_scanning ? "Disconnecting..." : "Reconnecting..."}
           size="small"
           tone={repository.is_active_for_scanning ? "danger" : "default"}
+        />
+      </form>
+      <form action={removeRepositoryAction}>
+        <input name="repositoryId" type="hidden" value={repository.id} />
+        <RepositoryActionButton
+          confirmMessage={`Remove ${repository.repo_name} from Sprocky? This deletes its scan results and tracked issue records from this app.`}
+          icon="remove"
+          iconOnly
+          label="Remove from app"
+          pendingLabel="Removing..."
+          size="small"
+          tone="danger"
         />
       </form>
     </div>
@@ -412,6 +508,16 @@ function normalizeRepositoryFilter(value: string | undefined): RepositoryFilter 
 
 function getGitHubRepositoryUrl(repositoryName: string) {
   return `https://github.com/${repositoryName}`;
+}
+
+function formatSuggestionMeta(suggestion: IssueSuggestion) {
+  const severity = suggestion.severity ? `Severity: ${suggestion.severity}` : "Impact detected";
+  const confidence =
+    typeof suggestion.confidence === "number"
+      ? ` · ${Math.round(suggestion.confidence * 100)}% confidence`
+      : "";
+
+  return `${severity}${confidence}`;
 }
 
 function isMissingMonitoringStatusColumnError(error: { code?: string; message?: string }) {

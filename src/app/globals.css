@@ -1045,8 +1045,8 @@ select {
     minmax(145px, 0.8fr)
     minmax(118px, 0.6fr)
     minmax(118px, 0.65fr)
-    minmax(120px, 0.75fr)
-    minmax(132px, 0.55fr);
+    minmax(156px, 0.78fr)
+    minmax(168px, 0.55fr);
   padding: 18px 26px;
 }
 
@@ -1137,17 +1137,36 @@ select {
   display: grid;
   gap: 6px;
   margin-top: 8px;
-  width: min(280px, 100%);
+  width: min(340px, 100%);
 }
 
-.issueDisclosureList a {
+.issueDisclosureList a,
+.issueSuggestionItem {
   background: #fff8f5;
   border: 1px solid #ffd8ce;
   border-radius: var(--radius);
   color: var(--foreground);
+}
+
+.issueDisclosureList a {
   display: grid;
   gap: 3px;
   padding: 8px 10px;
+}
+
+.issueSuggestionItem {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 8px 10px;
+}
+
+.issueSuggestionItem a {
+  background: transparent;
+  border: 0;
+  min-width: 0;
+  padding: 0;
 }
 
 .issueDisclosureList a span {
@@ -1167,6 +1186,26 @@ select {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
+}
+
+.suggestedIssueAction {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+
+.suggestedIssueAction .button {
+  font-size: 12px;
+  min-height: 30px;
+  padding: 0 9px;
+}
+
+.suggestedIssueAction > span {
+  color: var(--red);
+  font-size: 11px;
+  font-weight: 800;
+  max-width: 120px;
+  text-align: right;
 }
 
 .scanSummaryButton {
@@ -1433,6 +1472,19 @@ select {
   .repoActions {
     border-top: 1px solid #edf1f5;
     padding-top: 12px;
+  }
+
+  .issueSuggestionItem {
+    grid-template-columns: 1fr;
+  }
+
+  .suggestedIssueAction {
+    justify-items: start;
+  }
+
+  .suggestedIssueAction > span {
+    max-width: none;
+    text-align: left;
   }
 }
 

@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 import { Github, Mail } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { SettingsSaveButton } from "@/components/settings/SettingsSaveButton";
@@ -65,7 +66,7 @@ export default async function SettingsPage({
             <span className="repoIcon">
               <Github size={21} />
             </span>
-            <h2>GitHub Issue Notifications</h2>
+            <h2>GitHub Issue Creation</h2>
           </div>
           <label className="settingToggle">
             <input
@@ -75,11 +76,11 @@ export default async function SettingsPage({
               type="checkbox"
             />
             <span className="toggleIndicator" />
-            Automatically create detailed GitHub issues in impacted repositories
+            Automatically create GitHub issues for confirmed impacts
           </label>
           <p>
-            Sprocky will generate an issue with changelog context, detected usage
-            evidence, and migration steps in any monitored repository with confirmed usage.
+            When this is off, Sprocky will show suggested issues for confirmed
+            impacts and wait for you to create them manually.
           </p>
         </section>
 

@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -23,7 +24,7 @@ type SupabaseError = {
 const defaultSettings: NotificationSettings = {
   emailAddress: null,
   notifyViaEmail: true,
-  notifyViaGithubIssue: true,
+  notifyViaGithubIssue: false,
 };
 
 export async function getNotificationSettings(): Promise<NotificationSettings> {

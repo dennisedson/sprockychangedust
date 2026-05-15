@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 "use server";
 
 import { revalidatePath } from "next/cache";
@@ -32,6 +33,27 @@ export async function disconnectRepositoryAction(formData: FormData) {
 
 export async function reconnectRepositoryAction(formData: FormData) {
   await updateRepositoryConnection(formData, true);
+}
+
+export async function removeRepositoryAction(formData: FormData) {
+  const repositoryId = formData.get("repositoryId");
+
+  if (typeof repositoryId !== "string" || repositoryId.length === 0) {
+    return;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("installed_repositories")
+    .delete()
+    .eq("id", repositoryId);
+
+  if (error) {
+    throw error;
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/repositories");
 }
 
 export async function watchRepositoryAction(formData: FormData) {
