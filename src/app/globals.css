@@ -120,8 +120,15 @@ select {
   border: 2px solid rgba(66, 82, 107, 0.22);
   border-top-color: var(--muted-strong);
   border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 auto;
   height: 16px;
   width: 16px;
+}
+
+.miniSpinner {
+  height: 12px;
+  width: 12px;
 }
 
 @keyframes spin {
@@ -794,6 +801,45 @@ select {
   align-items: center;
   display: flex;
   gap: 12px;
+}
+
+.statusBanner {
+  align-items: center;
+  background: #fff8f5;
+  border: 1px solid #ffd8ce;
+  border-radius: var(--radius);
+  color: var(--foreground);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin: -10px 0 24px;
+  padding: 14px 16px;
+}
+
+.statusBanner div {
+  display: grid;
+  gap: 3px;
+  margin-right: auto;
+}
+
+.statusBanner strong {
+  font-size: 14px;
+}
+
+.statusBanner span {
+  color: var(--muted-strong);
+  font-size: 13px;
+}
+
+.statusBanner a {
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.statusBanner.error {
+  background: #feecec;
+  border-color: #ffd0c8;
 }
 
 .compact {
@@ -1515,6 +1561,7 @@ select {
   .marketingActions,
   .marketingNav nav,
   .pageActions,
+  .statusBanner,
   .topbar,
   .pageHeader,
   .tableTools,

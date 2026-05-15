@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 import crypto from "node:crypto";
 import { fetchRepositoryScanFiles } from "@/lib/github/repositories";
 import { scanRepositoryFiles } from "@/lib/scanner/scanRepositoryFiles";
@@ -12,7 +13,8 @@ export type InstalledRepositoryForScan = {
 
 export type InstalledRepositoryScanOutcome = {
   repository: InstalledRepositoryForScan;
-  result: RepositoryScanResult;
+  result?: RepositoryScanResult;
+  error?: string;
 };
 
 type SupabaseError = {
@@ -27,39 +29,46 @@ type ScanOptions = {
 export async function scanInstalledRepository(
   repository: InstalledRepositoryForScan,
 ): Promise<RepositoryScanResult> {
-  const [owner, repo] = repository.repo_name.split("/");
+  await setRepositoryScanStatus(repository.id, "scanning");
 
-  if (!owner || !repo) {
-    const emptyResult: RepositoryScanResult = {
-      hasHubSpotUsage: false,
-      signals: [],
-      manifest: {
-        platformVersions: [],
-        apiPaths: [],
-        apiVersionSegments: [],
-        sdkPackages: [],
-        sdkSymbols: [],
-        scopes: [],
-        fileMarkers: [],
-        productAreas: [],
-        evidence: [],
-      },
-    };
+  try {
+    const [owner, repo] = repository.repo_name.split("/");
 
-    await saveRepositoryScanResult(repository.id, emptyResult);
-    return emptyResult;
+    if (!owner || !repo) {
+      const emptyResult: RepositoryScanResult = {
+        hasHubSpotUsage: false,
+        signals: [],
+        manifest: {
+          platformVersions: [],
+          apiPaths: [],
+          apiVersionSegments: [],
+          sdkPackages: [],
+          sdkSymbols: [],
+          scopes: [],
+          fileMarkers: [],
+          productAreas: [],
+          evidence: [],
+        },
+      };
+
+      await saveRepositoryScanResult(repository.id, emptyResult);
+      return emptyResult;
+    }
+
+    const files = await fetchRepositoryScanFiles({
+      installationId: repository.installation_id,
+      owner,
+      repo,
+    });
+    const result = scanRepositoryFiles(files);
+
+    await saveRepositoryScanResult(repository.id, result);
+
+    return result;
+  } catch (error) {
+    await setRepositoryScanStatus(repository.id, "failed", getErrorMessage(error));
+    throw error;
   }
-
-  const files = await fetchRepositoryScanFiles({
-    installationId: repository.installation_id,
-    owner,
-    repo,
-  });
-  const result = scanRepositoryFiles(files);
-
-  await saveRepositoryScanResult(repository.id, result);
-
-  return result;
 }
 
 export async function scanInstalledRepositoryById(repositoryId: string) {
@@ -134,14 +143,46 @@ export async function scanInstalledRepositoriesByGithubRepoIds(
   return scanRepositoryRows(repositories);
 }
 
+export async function scanInstalledRepositoriesByInstallationId(
+  installationId: number,
+  options: ScanOptions = {},
+) {
+  const supabase = createSupabaseAdminClient();
+  let query = supabase
+    .from("installed_repositories")
+    .select("id,installation_id,repo_name")
+    .eq("installation_id", installationId)
+    .eq("is_active_for_scanning", true)
+    .order("created_at", { ascending: false });
+
+  if (options.limit) {
+    query = query.limit(options.limit);
+  }
+
+  const { data: repositories, error } = await query.returns<InstalledRepositoryForScan[]>();
+
+  if (error) {
+    throw error;
+  }
+
+  return scanRepositoryRows(repositories);
+}
+
 async function scanRepositoryRows(repositories: InstalledRepositoryForScan[]) {
   const outcomes: InstalledRepositoryScanOutcome[] = [];
 
   for (const repository of repositories) {
-    outcomes.push({
-      repository,
-      result: await scanInstalledRepository(repository),
-    });
+    try {
+      outcomes.push({
+        repository,
+        result: await scanInstalledRepository(repository),
+      });
+    } catch (error) {
+      outcomes.push({
+        repository,
+        error: getErrorMessage(error),
+      });
+    }
   }
 
   return outcomes;
@@ -156,6 +197,8 @@ async function saveRepositoryScanResult(repositoryId: string, result: Repository
         has_hubspot_usage: result.hasHubSpotUsage,
         latest_scan_signals: result.signals,
         last_scanned_at: new Date().toISOString(),
+        last_scan_error: null,
+        scan_status: "complete",
       })
       .eq("id", repositoryId),
     supabase.from("repository_manifests").upsert({
@@ -175,6 +218,23 @@ async function saveRepositoryScanResult(repositoryId: string, result: Repository
   ]);
 
   if (error) {
+    if (isMissingRepositoryScanStatusColumnError(error)) {
+      const { error: fallbackError } = await supabase
+        .from("installed_repositories")
+        .update({
+          has_hubspot_usage: result.hasHubSpotUsage,
+          latest_scan_signals: result.signals,
+          last_scanned_at: new Date().toISOString(),
+        })
+        .eq("id", repositoryId);
+
+      if (fallbackError) {
+        throw fallbackError;
+      }
+
+      return;
+    }
+
     if (isMissingRepositoryScanColumnError(error)) {
       const { error: fallbackError } = await supabase
         .from("installed_repositories")
@@ -198,11 +258,38 @@ async function saveRepositoryScanResult(repositoryId: string, result: Repository
   }
 }
 
+async function setRepositoryScanStatus(
+  repositoryId: string,
+  scanStatus: "pending" | "scanning" | "complete" | "failed",
+  lastScanError: string | null = null,
+) {
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("installed_repositories")
+    .update({
+      last_scan_error: lastScanError,
+      scan_status: scanStatus,
+    })
+    .eq("id", repositoryId);
+
+  if (error && !isMissingRepositoryScanStatusColumnError(error)) {
+    throw error;
+  }
+}
+
 export function isMissingRepositoryScanColumnError(error: SupabaseError) {
   return (
     error.code === "42703" ||
     error.message?.includes("has_hubspot_usage") ||
     error.message?.includes("latest_scan_signals") ||
+    false
+  );
+}
+
+function isMissingRepositoryScanStatusColumnError(error: SupabaseError) {
+  return (
+    error.message?.includes("scan_status") ||
+    error.message?.includes("last_scan_error") ||
     false
   );
 }
@@ -217,4 +304,8 @@ function isMissingRepositoryManifestTableError(error: SupabaseError) {
 
 function hashManifest(manifest: RepositoryScanResult["manifest"]) {
   return crypto.createHash("sha256").update(JSON.stringify(manifest)).digest("hex");
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Repository scan failed.";
 }

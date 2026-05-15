@@ -4,6 +4,7 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { IssueAutoRefresh } from "@/components/issues/IssueAutoRefresh";
 import { RepositoryActionButton } from "@/components/repositories/RepositoryActionButton";
 import { RepositoryRemoveButton } from "@/components/repositories/RepositoryRemoveButton";
+import { RepositorySetupScanStarter } from "@/components/repositories/RepositorySetupScanStarter";
 import { RepositoryUsageModal } from "@/components/repositories/RepositoryUsageModal";
 import { SuggestedIssueCreateButton } from "@/components/repositories/SuggestedIssueCreateButton";
 import {
@@ -33,21 +34,31 @@ type RepositoryRow = {
   monitoring_status: MonitoringStatus;
   has_hubspot_usage: boolean;
   latest_scan_signals: ScanSignal[] | null;
+  last_scan_error: string | null;
   last_scanned_at: string | null;
+  scan_status: ScanStatus;
   created_at: string;
 };
 
 type MonitoringStatus = "pending" | "watched" | "ignored";
+type ScanStatus = "pending" | "scanning" | "complete" | "failed";
 type RepositoryFilter = "hubspot" | "ignored" | "all";
 type RepositoriesPageProps = {
   searchParams?: Promise<{
     filter?: string;
+    githubSync?: string;
+    installationId?: string;
+    syncId?: string;
   }>;
 };
 
 type BaseRepositoryRow = Omit<
   RepositoryRow,
-  "has_hubspot_usage" | "latest_scan_signals" | "monitoring_status"
+  | "has_hubspot_usage"
+  | "last_scan_error"
+  | "latest_scan_signals"
+  | "monitoring_status"
+  | "scan_status"
 >;
 
 type IssueSuggestion = {
@@ -81,17 +92,37 @@ async function getRepositories() {
   const { data, error } = await supabase
     .from("installed_repositories")
     .select(
-      "id,repo_name,is_active_for_scanning,monitoring_status,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
+      "id,repo_name,is_active_for_scanning,monitoring_status,has_hubspot_usage,latest_scan_signals,last_scan_error,last_scanned_at,scan_status,created_at",
     )
     .order("created_at", { ascending: false })
     .returns<RepositoryRow[]>();
 
   if (error) {
+    if (isMissingRepositoryScanStatusColumnError(error)) {
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from("installed_repositories")
+        .select(
+          "id,repo_name,is_active_for_scanning,monitoring_status,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
+        )
+        .order("created_at", { ascending: false })
+        .returns<Omit<RepositoryRow, "last_scan_error" | "scan_status">[]>();
+
+      if (fallbackError) {
+        throw fallbackError;
+      }
+
+      return fallbackData.map((repo) => ({
+        ...repo,
+        last_scan_error: null,
+        scan_status: getFallbackScanStatus(repo.last_scanned_at),
+      }));
+    }
+
     if (isMissingMonitoringStatusColumnError(error)) {
       const { data: fallbackData, error: fallbackError } = await supabase
         .from("installed_repositories")
         .select(
-          "id,repo_name,is_active_for_scanning,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
+          "id,repo_name,is_active_for_scanning,has_hubspot_usage,latest_scan_signals,last_scan_error,last_scanned_at,scan_status,created_at",
         )
         .order("created_at", { ascending: false })
         .returns<Omit<RepositoryRow, "monitoring_status">[]>();
@@ -121,7 +152,9 @@ async function getRepositories() {
         ...repo,
         monitoring_status: "watched" as const,
         has_hubspot_usage: false,
+        last_scan_error: null,
         latest_scan_signals: null,
+        scan_status: getFallbackScanStatus(repo.last_scanned_at),
       }));
     }
 
@@ -138,6 +171,10 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
   const visibleRepositories = filterRepositories(repositories, activeFilter);
   const trackedIssues = await listVisibleTrackedIssues();
   const issueSuggestions = await listIssueSuggestions();
+  const setupInstallationId = normalizeInstallationId(params?.installationId);
+  const hasPendingScans = repositories.some((repo) =>
+    repo.is_active_for_scanning && ["pending", "scanning"].includes(repo.scan_status),
+  );
 
   return (
     <DashboardShell active="Repositories">
@@ -156,6 +193,8 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
           </a>
         </div>
       </div>
+
+      <GitHubSetupBanner githubSync={params?.githubSync} hasPendingScans={hasPendingScans} />
 
       <section className="card tableTools">
         <label className="tableSearch">
@@ -226,7 +265,9 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
                 </a>
               </div>
               <StatusCell repository={repo} />
-              <span className="lastScanCell">{formatLastScanned(repo.last_scanned_at)}</span>
+              <span className="lastScanCell">
+                {formatLastScanned(repo.last_scanned_at, repo.scan_status)}
+              </span>
               <div className="usageCell">
                 <ScanResultCell repository={repo} />
               </div>
@@ -241,7 +282,56 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
         </section>
       )}
       <IssueAutoRefresh />
+      <RepositorySetupScanStarter
+        installationId={setupInstallationId}
+        syncId={params?.syncId || null}
+      />
     </DashboardShell>
+  );
+}
+
+function GitHubSetupBanner({
+  githubSync,
+  hasPendingScans,
+}: {
+  githubSync: string | undefined;
+  hasPendingScans: boolean;
+}) {
+  if (githubSync === "error") {
+    return (
+      <section className="statusBanner error" role="status">
+        <strong>GitHub sync did not finish.</strong>
+        <span>Refresh this page or reconnect the GitHub App if the repository does not appear.</span>
+      </section>
+    );
+  }
+
+  if (githubSync === "missing") {
+    return (
+      <section className="statusBanner error" role="status">
+        <strong>GitHub did not return an installation ID.</strong>
+        <span>Try the GitHub App setup flow again.</span>
+      </section>
+    );
+  }
+
+  if (githubSync !== "success") {
+    return null;
+  }
+
+  return (
+    <section className="statusBanner" role="status">
+      <span aria-hidden="true" className="spinner" />
+      <div>
+        <strong>Repository connection received.</strong>
+        <span>
+          {hasPendingScans
+            ? "Sprocky is syncing GitHub and running the baseline scan."
+            : "Sprocky synced GitHub. Review the repository states below."}
+        </span>
+      </div>
+      <a href="/repositories">Dismiss</a>
+    </section>
   );
 }
 
@@ -339,6 +429,8 @@ function StatusCell({ repository }: { repository: RepositoryRow }) {
   return (
     <div className="statusCell">
       {!repository.is_active_for_scanning ? <span className="badge">Disconnected</span> : null}
+      {isNewRepository(repository.created_at) ? <span className="badge green">New</span> : null}
+      <ScanStatusBadge repository={repository} />
       <MonitoringBadge repository={repository} />
     </div>
   );
@@ -382,6 +474,23 @@ function RepositoryActionsCell({ repository }: { repository: RepositoryRow }) {
 function ScanResultCell({ repository }: { repository: RepositoryRow }) {
   const signals = repository.latest_scan_signals || [];
 
+  if (repository.scan_status === "scanning") {
+    return (
+      <span className="badge orange">
+        <span aria-hidden="true" className="spinner miniSpinner" />
+        Scanning
+      </span>
+    );
+  }
+
+  if (repository.scan_status === "pending" && !repository.last_scanned_at) {
+    return <span className="badge orange">Pending scan</span>;
+  }
+
+  if (repository.scan_status === "failed") {
+    return <span className="badge red" title={repository.last_scan_error || undefined}>Failed</span>;
+  }
+
   if (!repository.last_scanned_at) {
     return <span className="badge">Pending</span>;
   }
@@ -395,7 +504,35 @@ function ScanResultCell({ repository }: { repository: RepositoryRow }) {
   );
 }
 
+function ScanStatusBadge({ repository }: { repository: RepositoryRow }) {
+  if (repository.scan_status === "scanning") {
+    return (
+      <span className="badge orange">
+        <span aria-hidden="true" className="spinner miniSpinner" />
+        Scanning
+      </span>
+    );
+  }
+
+  if (repository.scan_status === "pending" && !repository.last_scanned_at) {
+    return <span className="badge orange">Scan queued</span>;
+  }
+
+  if (repository.scan_status === "failed") {
+    return <span className="badge red">Scan failed</span>;
+  }
+
+  return null;
+}
+
 function MonitoringBadge({ repository }: { repository: RepositoryRow }) {
+  if (
+    !repository.has_hubspot_usage &&
+    ["pending", "scanning", "failed"].includes(repository.scan_status)
+  ) {
+    return null;
+  }
+
   if (!repository.has_hubspot_usage) {
     return <span className="badge">No signal</span>;
   }
@@ -517,7 +654,19 @@ function isMissingMonitoringStatusColumnError(error: { code?: string; message?: 
   );
 }
 
-function formatLastScanned(value: string | null) {
+function formatLastScanned(value: string | null, scanStatus: ScanStatus) {
+  if (scanStatus === "scanning") {
+    return "Scanning now";
+  }
+
+  if (scanStatus === "pending" && !value) {
+    return "Queued";
+  }
+
+  if (scanStatus === "failed" && !value) {
+    return "Scan failed";
+  }
+
   if (!value) {
     return "Not scanned yet";
   }
@@ -528,4 +677,33 @@ function formatLastScanned(value: string | null) {
     minute: "2-digit",
     month: "short",
   }).format(new Date(value));
+}
+
+function getFallbackScanStatus(lastScannedAt: string | null): ScanStatus {
+  return lastScannedAt ? "complete" : "pending";
+}
+
+function isMissingRepositoryScanStatusColumnError(error: { code?: string; message?: string }) {
+  return (
+    error.message?.includes("scan_status") ||
+    error.message?.includes("last_scan_error") ||
+    false
+  );
+}
+
+function normalizeInstallationId(value: string | undefined) {
+  const installationId = Number(value);
+
+  if (!Number.isFinite(installationId) || installationId <= 0) {
+    return null;
+  }
+
+  return installationId;
+}
+
+function isNewRepository(value: string) {
+  const createdAt = new Date(value).getTime();
+  const fiveMinutesMs = 5 * 60 * 1000;
+
+  return Number.isFinite(createdAt) && Date.now() - createdAt < fiveMinutesMs;
 }

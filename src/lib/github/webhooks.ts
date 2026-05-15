@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireEnv } from "@/lib/env";
@@ -176,8 +177,12 @@ function mapIssueLabels(
     .filter((label): label is string => Boolean(label));
 }
 
-export async function syncInstallationRepositories(installationId: number) {
+export async function syncInstallationRepositories(
+  installationId: number,
+  options: { runInitialScan?: boolean } = {},
+) {
   const repositories = await listInstallationRepositories(installationId);
+  const runInitialScan = options.runInitialScan ?? true;
 
   await upsertInstallation({
     installationId,
@@ -190,10 +195,12 @@ export async function syncInstallationRepositories(installationId: number) {
     isActiveForScanning: true,
   });
 
-  await scanInstalledRepositoriesByGithubRepoIds(
-    repositories.map((repository) => repository.id),
-    { limit: initialScanLimit },
-  );
+  if (runInitialScan) {
+    await scanInstalledRepositoriesByGithubRepoIds(
+      repositories.map((repository) => repository.id),
+      { limit: initialScanLimit },
+    );
+  }
 
   return repositories;
 }
