@@ -10,6 +10,7 @@ type RepositoryActionButtonProps = {
   size?: "default" | "small";
   tone?: "danger" | "default";
   disabled?: boolean;
+  iconOnly?: boolean;
 };
 
 const icons = {
@@ -27,22 +28,26 @@ export function RepositoryActionButton({
   size = "default",
   tone = "default",
   disabled = false,
+  iconOnly = false,
 }: RepositoryActionButtonProps) {
   const { pending } = useFormStatus();
   const Icon = icons[icon];
   const className = `button secondary${tone === "danger" ? " danger" : ""}${
     size === "small" ? " smallButton" : ""
-  }`;
+  }${iconOnly ? " iconOnlyButton" : ""}`;
+  const buttonLabel = pending ? pendingLabel : label;
 
   return (
     <button
+      aria-label={iconOnly ? buttonLabel : undefined}
       aria-live="polite"
       className={className}
       disabled={pending || disabled}
+      title={iconOnly ? buttonLabel : undefined}
       type="submit"
     >
       {pending ? <span aria-hidden="true" className="spinner" /> : <Icon size={17} />}
-      {pending ? pendingLabel : label}
+      {iconOnly ? <span className="sr-only">{buttonLabel}</span> : buttonLabel}
     </button>
   );
 }

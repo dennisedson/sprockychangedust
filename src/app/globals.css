@@ -95,6 +95,13 @@ select {
   padding: 0 12px;
 }
 
+.button.iconOnlyButton {
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  width: 36px;
+}
+
 .iconButton {
   align-items: center;
   background: #ffffff;
@@ -1032,8 +1039,14 @@ select {
 .repoRow {
   align-items: center;
   display: grid;
-  gap: 18px;
-  grid-template-columns: 1.6fr 1.05fr 1.05fr 0.85fr 1.35fr 1.15fr 0.65fr;
+  gap: 16px;
+  grid-template-columns:
+    minmax(230px, 1.7fr)
+    minmax(145px, 0.8fr)
+    minmax(118px, 0.6fr)
+    minmax(118px, 0.65fr)
+    minmax(120px, 0.75fr)
+    minmax(132px, 0.55fr);
   padding: 18px 26px;
 }
 
@@ -1051,8 +1064,7 @@ select {
 }
 
 .repoName,
-.connectionCell,
-.monitoringCell,
+.statusCell,
 .repoActions,
 .toggleCell {
   align-items: center;
@@ -1060,27 +1072,23 @@ select {
   gap: 12px;
 }
 
-.repoLink,
-.linkedBadge {
+.repoLink {
   align-items: center;
   display: inline-flex;
 }
 
 .repoLink {
-  gap: 10px;
+  gap: 6px;
   min-width: 0;
 }
 
-.linkedBadge {
-  background: #eaf7ef;
-  border: 1px solid #bae5c8;
-  border-radius: 999px;
+.repoLink strong {
+  overflow-wrap: anywhere;
+}
+
+.repoExternalIcon {
   color: var(--green);
   flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 800;
-  gap: 4px;
-  padding: 3px 7px;
 }
 
 .repoName a:hover,
@@ -1093,12 +1101,72 @@ select {
   justify-content: flex-start;
 }
 
-.connectionCell {
+.repoActions {
+  gap: 8px;
+}
+
+.statusCell {
   flex-wrap: wrap;
 }
 
-.monitoringCell {
-  flex-wrap: wrap;
+.lastScanCell,
+.mutedCellText {
+  color: var(--muted-strong);
+  font-size: 13px;
+}
+
+.usageCell {
+  min-width: 0;
+}
+
+.issueDisclosure {
+  position: relative;
+}
+
+.issueDisclosure summary {
+  cursor: pointer;
+  display: inline-flex;
+  list-style: none;
+}
+
+.issueDisclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.issueDisclosureList {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  width: min(280px, 100%);
+}
+
+.issueDisclosureList a {
+  background: #fff8f5;
+  border: 1px solid #ffd8ce;
+  border-radius: var(--radius);
+  color: var(--foreground);
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+}
+
+.issueDisclosureList a span {
+  font-size: 13px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issueDisclosureList a strong {
+  color: var(--primary-dark);
+  font-size: 12px;
+}
+
+.issueDisclosureList a small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .scanSummaryButton {
@@ -1329,12 +1397,42 @@ select {
   }
 
   .repoTable {
-    overflow-x: auto;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    display: grid;
+    gap: 12px;
+    overflow: visible;
   }
 
-  .repoTableHead,
+  .repoTableHead {
+    display: none;
+  }
+
   .repoRow {
-    min-width: 1320px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    gap: 12px 16px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-width: 0;
+    padding: 16px;
+  }
+
+  .repoName,
+  .statusCell,
+  .lastScanCell,
+  .usageCell,
+  .issueDisclosure,
+  .mutedCellText,
+  .repoActions {
+    grid-column: 1 / -1;
+  }
+
+  .repoActions {
+    border-top: 1px solid #edf1f5;
+    padding-top: 12px;
   }
 }
 

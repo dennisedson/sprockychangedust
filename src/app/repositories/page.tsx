@@ -2,7 +2,6 @@
 import { ExternalLink, Github, Plus, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { IssueAutoRefresh } from "@/components/issues/IssueAutoRefresh";
-import { TrackedIssueList } from "@/components/issues/TrackedIssueList";
 import { RepositoryActionButton } from "@/components/repositories/RepositoryActionButton";
 import { RepositoryUsageModal } from "@/components/repositories/RepositoryUsageModal";
 import {
@@ -179,11 +178,10 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
         <section className="card repoTable" aria-label="Connected repositories">
           <div className="repoTableHead">
             <span>Repository Name</span>
-            <span>Connection</span>
+            <span>Status</span>
             <span>Last Scanned</span>
             <span>HubSpot Usage</span>
-            <span>Monitoring</span>
-            <span>Open Issues</span>
+            <span>Issues</span>
             <span>Actions</span>
           </div>
           {visibleRepositories.map((repo) => (
@@ -199,29 +197,16 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
                   target="_blank"
                 >
                   <strong>{repo.repo_name}</strong>
-                  <span className="linkedBadge">
-                    <ExternalLink size={12} />
-                    GitHub
-                  </span>
+                  <ExternalLink className="repoExternalIcon" size={13} />
                 </a>
               </div>
-              <ConnectionCell repository={repo} />
-              <span>{formatLastScanned(repo.last_scanned_at)}</span>
-              <ScanResultCell repository={repo} />
-              <MonitoringCell repository={repo} />
-              <OpenIssuesCell repository={repo} trackedIssues={trackedIssues} />
-              <div className="repoActions">
-                <form action={scanRepositoryAction}>
-                  <input name="repositoryId" type="hidden" value={repo.id} />
-                  <RepositoryActionButton
-                    disabled={!repo.is_active_for_scanning}
-                    icon="scan"
-                    label="Scan"
-                    pendingLabel="Scanning..."
-                    size="small"
-                  />
-                </form>
+              <StatusCell repository={repo} />
+              <span className="lastScanCell">{formatLastScanned(repo.last_scanned_at)}</span>
+              <div className="usageCell">
+                <ScanResultCell repository={repo} />
               </div>
+              <OpenIssuesCell repository={repo} trackedIssues={trackedIssues} />
+              <RepositoryActionsCell repository={repo} />
             </article>
           ))}
         </section>
@@ -238,29 +223,69 @@ function OpenIssuesCell({
   repository: RepositoryRow;
   trackedIssues: TrackedIssueDisplay[];
 }) {
+  const issues = trackedIssues.filter((issue) => issue.installedRepositoryId === repository.id);
+
+  if (issues.length === 0) {
+    return <span className="mutedCellText">No tracked issues</span>;
+  }
+
   return (
-    <TrackedIssueList
-      emptyLabel="No open issues"
-      issues={trackedIssues.filter((issue) => issue.installedRepositoryId === repository.id)}
-      variant="repository"
-    />
+    <details className="issueDisclosure">
+      <summary>
+        <span className="badge orange">{issues.length} tracked</span>
+      </summary>
+      <div className="issueDisclosureList">
+        {issues.map((issue) => (
+          <a href={issue.issueUrl} key={issue.id} rel="noreferrer" target="_blank">
+            <span>{issue.changelogTitle}</span>
+            <strong>#{issue.issueNumber}</strong>
+            <small>
+              {issue.issueState}
+              {" · "}
+              {issue.assignees.length > 0 ? issue.assignees.join(", ") : "Unassigned"}
+            </small>
+          </a>
+        ))}
+      </div>
+    </details>
   );
 }
 
-function ConnectionCell({ repository }: { repository: RepositoryRow }) {
+function StatusCell({ repository }: { repository: RepositoryRow }) {
+  return (
+    <div className="statusCell">
+      <span className={`badge ${repository.is_active_for_scanning ? "green" : ""}`}>
+        {repository.is_active_for_scanning ? "Linked" : "Disconnected"}
+      </span>
+      <MonitoringBadge repository={repository} />
+    </div>
+  );
+}
+
+function RepositoryActionsCell({ repository }: { repository: RepositoryRow }) {
   const action = repository.is_active_for_scanning
     ? disconnectRepositoryAction
     : reconnectRepositoryAction;
 
   return (
-    <div className="connectionCell">
-      <span className={`badge ${repository.is_active_for_scanning ? "green" : ""}`}>
-        {repository.is_active_for_scanning ? "Linked" : "Disconnected"}
-      </span>
+    <div className="repoActions">
+      <form action={scanRepositoryAction}>
+        <input name="repositoryId" type="hidden" value={repository.id} />
+        <RepositoryActionButton
+          disabled={!repository.is_active_for_scanning}
+          icon="scan"
+          iconOnly
+          label="Scan"
+          pendingLabel="Scanning..."
+          size="small"
+        />
+      </form>
+      <MonitoringAction repository={repository} />
       <form action={action}>
         <input name="repositoryId" type="hidden" value={repository.id} />
         <RepositoryActionButton
           icon={repository.is_active_for_scanning ? "disconnect" : "reconnect"}
+          iconOnly
           label={repository.is_active_for_scanning ? "Disconnect" : "Reconnect"}
           pendingLabel={repository.is_active_for_scanning ? "Disconnecting..." : "Reconnecting..."}
           size="small"
@@ -287,73 +312,56 @@ function ScanResultCell({ repository }: { repository: RepositoryRow }) {
   );
 }
 
-function MonitoringCell({ repository }: { repository: RepositoryRow }) {
+function MonitoringBadge({ repository }: { repository: RepositoryRow }) {
   if (!repository.has_hubspot_usage) {
     return <span className="badge">No signal</span>;
   }
 
   if (repository.monitoring_status === "watched") {
-    return (
-      <div className="monitoringCell">
-        <span className="badge green">Watched</span>
-        <form action={ignoreRepositoryAction}>
-          <input name="repositoryId" type="hidden" value={repository.id} />
-          <RepositoryActionButton
-            disabled={!repository.is_active_for_scanning}
-            icon="ignore"
-            label="Ignore"
-            pendingLabel="Ignoring..."
-            size="small"
-            tone="danger"
-          />
-        </form>
-      </div>
-    );
+    return <span className="badge green">Watched</span>;
   }
 
   if (repository.monitoring_status === "ignored") {
-    return (
-      <div className="monitoringCell">
-        <span className="badge">Ignored</span>
-        <form action={watchRepositoryAction}>
-          <input name="repositoryId" type="hidden" value={repository.id} />
-          <RepositoryActionButton
-            disabled={!repository.is_active_for_scanning}
-            icon="watch"
-            label="Watch & check"
-            pendingLabel="Checking..."
-            size="small"
-          />
-        </form>
-      </div>
-    );
+    return <span className="badge">Ignored</span>;
   }
 
-  return (
-    <div className="monitoringCell">
-      <span className="badge orange">Review</span>
-      <form action={watchRepositoryAction}>
-        <input name="repositoryId" type="hidden" value={repository.id} />
-        <RepositoryActionButton
-          disabled={!repository.is_active_for_scanning}
-          icon="watch"
-          label="Watch & check"
-          pendingLabel="Checking..."
-          size="small"
-        />
-      </form>
+  return <span className="badge orange">Review</span>;
+}
+
+function MonitoringAction({ repository }: { repository: RepositoryRow }) {
+  if (!repository.has_hubspot_usage) {
+    return null;
+  }
+
+  if (repository.monitoring_status === "watched") {
+    return (
       <form action={ignoreRepositoryAction}>
         <input name="repositoryId" type="hidden" value={repository.id} />
         <RepositoryActionButton
           disabled={!repository.is_active_for_scanning}
           icon="ignore"
+          iconOnly
           label="Ignore"
           pendingLabel="Ignoring..."
           size="small"
           tone="danger"
         />
       </form>
-    </div>
+    );
+  }
+
+  return (
+    <form action={watchRepositoryAction}>
+      <input name="repositoryId" type="hidden" value={repository.id} />
+      <RepositoryActionButton
+        disabled={!repository.is_active_for_scanning}
+        icon="watch"
+        iconOnly
+        label="Watch and check"
+        pendingLabel="Checking..."
+        size="small"
+      />
+    </form>
   );
 }
 
@@ -422,7 +430,9 @@ function formatLastScanned(value: string | null) {
   }
 
   return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
   }).format(new Date(value));
 }
