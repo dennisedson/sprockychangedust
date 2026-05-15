@@ -50,7 +50,7 @@ export function GitHubDisconnectButton({ disabled }: GitHubDisconnectButtonProps
   }
 
   return (
-    <span className="settingsActionControl">
+    <>
       <button
         className="button secondary danger"
         disabled={disabled || isDisconnecting}
@@ -60,7 +60,7 @@ export function GitHubDisconnectButton({ disabled }: GitHubDisconnectButtonProps
         {isDisconnecting ? <span aria-hidden="true" className="spinner" /> : <Unplug size={17} />}
         {isDisconnecting ? "Disconnecting..." : "Disconnect GitHub"}
       </button>
-      {status ? <span>{status}</span> : null}
-    </span>
+      {status ? <span className="settingsActionStatus">{status}</span> : null}
+    </>
   );
 }

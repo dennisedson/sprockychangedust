@@ -1402,21 +1402,18 @@ select {
 }
 
 .settingsActionRow {
-  align-items: center;
+  align-items: flex-start;
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
 }
 
-.settingsActionControl {
-  display: grid;
-  gap: 6px;
-}
-
-.settingsActionControl > span {
+.settingsActionStatus {
   color: var(--red);
+  flex-basis: 100%;
   font-size: 12px;
   font-weight: 800;
+  margin-top: -6px;
   max-width: 420px;
 }
 
