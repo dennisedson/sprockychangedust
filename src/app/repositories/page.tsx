@@ -172,6 +172,9 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
   const trackedIssues = await listVisibleTrackedIssues();
   const issueSuggestions = await listIssueSuggestions();
   const setupInstallationId = normalizeInstallationId(params?.installationId);
+  const pendingScanCount = repositories.filter(
+    (repo) => repo.is_active_for_scanning && repo.scan_status === "pending",
+  ).length;
   const hasPendingScans = repositories.some((repo) =>
     repo.is_active_for_scanning && ["pending", "scanning"].includes(repo.scan_status),
   );
@@ -195,6 +198,7 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
       </div>
 
       <GitHubSetupBanner githubSync={params?.githubSync} hasPendingScans={hasPendingScans} />
+      <ScanQueueBanner githubSync={params?.githubSync} pendingScanCount={pendingScanCount} />
 
       <section className="card tableTools">
         <label className="tableSearch">
@@ -284,9 +288,34 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
       <IssueAutoRefresh />
       <RepositorySetupScanStarter
         installationId={setupInstallationId}
+        pendingScanCount={pendingScanCount}
         syncId={params?.syncId || null}
       />
     </DashboardShell>
+  );
+}
+
+function ScanQueueBanner({
+  githubSync,
+  pendingScanCount,
+}: {
+  githubSync: string | undefined;
+  pendingScanCount: number;
+}) {
+  if (githubSync === "success" || pendingScanCount === 0) {
+    return null;
+  }
+
+  return (
+    <section className="statusBanner" role="status">
+      <span aria-hidden="true" className="spinner" />
+      <div>
+        <strong>Repository scan queue is running.</strong>
+        <span>
+          {pendingScanCount} {pendingScanCount === 1 ? "repository is" : "repositories are"} queued.
+        </span>
+      </div>
+    </section>
   );
 }
 

@@ -23,6 +23,7 @@ type SupabaseError = {
 };
 
 type ScanOptions = {
+  installationId?: number;
   limit?: number;
 };
 
@@ -168,6 +169,55 @@ export async function scanInstalledRepositoriesByInstallationId(
   return scanRepositoryRows(repositories);
 }
 
+export async function scanQueuedInstalledRepositories(options: ScanOptions = {}) {
+  const supabase = createSupabaseAdminClient();
+  let query = supabase
+    .from("installed_repositories")
+    .select("id,installation_id,repo_name")
+    .eq("is_active_for_scanning", true)
+    .eq("scan_status", "pending")
+    .order("created_at", { ascending: true });
+
+  if (options.installationId) {
+    query = query.eq("installation_id", options.installationId);
+  }
+
+  if (options.limit) {
+    query = query.limit(options.limit);
+  }
+
+  const { data: repositories, error } = await query.returns<InstalledRepositoryForScan[]>();
+
+  if (error) {
+    throw error;
+  }
+
+  return scanRepositoryRows(repositories);
+}
+
+export async function countQueuedInstalledRepositoryScans(
+  options: Pick<ScanOptions, "installationId"> = {},
+) {
+  const supabase = createSupabaseAdminClient();
+  let query = supabase
+    .from("installed_repositories")
+    .select("id", { count: "exact", head: true })
+    .eq("is_active_for_scanning", true)
+    .eq("scan_status", "pending");
+
+  if (options.installationId) {
+    query = query.eq("installation_id", options.installationId);
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  return count || 0;
+}
+
 async function scanRepositoryRows(repositories: InstalledRepositoryForScan[]) {
   const outcomes: InstalledRepositoryScanOutcome[] = [];
 
@@ -269,6 +319,7 @@ async function setRepositoryScanStatus(
     .update({
       last_scan_error: lastScanError,
       scan_status: scanStatus,
+      updated_at: new Date().toISOString(),
     })
     .eq("id", repositoryId);
 
