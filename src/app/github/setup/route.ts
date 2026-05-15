@@ -1,6 +1,7 @@
 // @workflow_state: REVIEW
 import { NextResponse } from "next/server";
 import { syncInstallationRepositories } from "@/lib/github/webhooks";
+import { requireCurrentWorkspaceContext } from "@/lib/workspaces/currentWorkspace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,14 @@ export async function GET(request: Request) {
   }
 
   try {
-    await syncInstallationRepositories(installationId, { runInitialScan: false });
+    const context = await requireCurrentWorkspaceContext();
+    await syncInstallationRepositories(installationId, {
+      ownerContext: {
+        userId: context.user.id,
+        workspaceId: context.workspaceId,
+      },
+      runInitialScan: false,
+    });
     redirectUrl.searchParams.set("filter", "all");
     redirectUrl.searchParams.set("githubSync", "success");
     redirectUrl.searchParams.set("installationId", String(installationId));

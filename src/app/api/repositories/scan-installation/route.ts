@@ -6,6 +6,10 @@ import {
   countQueuedInstalledRepositoryScans,
   scanQueuedInstalledRepositories,
 } from "@/lib/scanner/scanInstalledRepository";
+import {
+  listCurrentWorkspaceInstallationIds,
+  requireCurrentWorkspaceContext,
+} from "@/lib/workspaces/currentWorkspace";
 
 export const dynamic = "force-dynamic";
 
@@ -23,11 +27,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid installation scan request." }, { status: 400 });
   }
 
+  const context = await requireCurrentWorkspaceContext();
+  const currentInstallationIds = await listCurrentWorkspaceInstallationIds(context);
   const installationId = payload.data.installationId || undefined;
+
+  if (installationId && !currentInstallationIds.includes(installationId)) {
+    return NextResponse.json({ error: "Installation was not found." }, { status: 404 });
+  }
+
+  const installationIds = installationId ? [installationId] : currentInstallationIds;
   const limit = payload.data.limit || defaultBatchSize;
-  const queuedBefore = await countQueuedInstalledRepositoryScans({ installationId });
-  const outcomes = await scanQueuedInstalledRepositories({ installationId, limit });
-  const remaining = await countQueuedInstalledRepositoryScans({ installationId });
+  const queuedBefore = await countQueuedInstalledRepositoryScans({ installationIds });
+  const outcomes = await scanQueuedInstalledRepositories({ installationIds, limit });
+  const remaining = await countQueuedInstalledRepositoryScans({ installationIds });
 
   revalidatePath("/dashboard");
   revalidatePath("/repositories");

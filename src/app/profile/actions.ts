@@ -6,8 +6,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
-  getNotificationSettings,
-  saveNotificationSettings,
+  getCurrentNotificationSettings,
+  saveCurrentNotificationSettings,
 } from "@/lib/notifications/settings";
 import {
   saveCurrentUserProfile,
@@ -33,10 +33,10 @@ export async function saveProfileAction(formData: FormData) {
     bio: formData.get("bio"),
   });
   const { emailAddress, ...profileFields } = profile;
-  const currentSettings = await getNotificationSettings();
+  const currentSettings = await getCurrentNotificationSettings();
 
   await saveCurrentUserProfile(profileFields);
-  await saveNotificationSettings({
+  await saveCurrentNotificationSettings({
     ...currentSettings,
     emailAddress,
   });

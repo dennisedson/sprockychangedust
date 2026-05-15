@@ -12,7 +12,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
-import { getNotificationSettings } from "@/lib/notifications/settings";
+import { getCurrentNotificationSettings } from "@/lib/notifications/settings";
 import { getCurrentUserProfile } from "@/lib/profile/userProfile";
 
 const navItems: { href: Route; label: string; icon: typeof Grid2X2 }[] = [
@@ -32,7 +32,7 @@ export async function DashboardShell({
   noStore();
 
   const [settings, profile] = await Promise.all([
-    getNotificationSettings(),
+    getCurrentNotificationSettings(),
     getCurrentUserProfile(),
   ]);
   const emailAddress = settings.emailAddress || profile.email || "No alert email set";

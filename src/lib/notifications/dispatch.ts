@@ -17,7 +17,7 @@ import {
 } from "@/lib/issues/trackedIssues";
 import { sendImpactAlertEmail } from "@/lib/notifications/email";
 import { createImpactIssue } from "@/lib/notifications/githubIssue";
-import { getNotificationSettings } from "@/lib/notifications/settings";
+import { getNotificationSettingsForInstallation } from "@/lib/notifications/settings";
 import { scanInstalledRepository } from "@/lib/scanner/scanInstalledRepository";
 import type { RepositoryManifest, ScanSignal } from "@/lib/scanner/types";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -90,7 +90,6 @@ export async function dispatchImpactNotifications(
   const repositories = await getWatchedRepositories(options.repositoryIds);
 
   const notifiedRepositories: string[] = [];
-  const settings = await getNotificationSettings();
   const impactProfile = await getOrCreateChangelogImpactProfile({
     id: entry.id,
     title: entry.title,
@@ -180,6 +179,7 @@ export async function dispatchImpactNotifications(
       continue;
     }
 
+    const settings = await getNotificationSettingsForInstallation(repository.installation_id);
     const existingIssues = settings.notifyViaGithubIssue
       ? await listExistingOpenTrackedIssues({
           changelogEntryId: entry.id,

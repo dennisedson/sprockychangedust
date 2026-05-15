@@ -4,6 +4,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { GitHubInstallationRepositoryRemovalError } from "@/lib/github/repositories";
 import { removeInstalledRepositoryFromGitHubAndDatabase } from "@/lib/repositories/removeRepository";
+import {
+  isRepositoryInCurrentWorkspace,
+  requireCurrentWorkspaceContext,
+} from "@/lib/workspaces/currentWorkspace";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +23,12 @@ export async function POST(request: Request) {
   }
 
   try {
+    const context = await requireCurrentWorkspaceContext();
+
+    if (!(await isRepositoryInCurrentWorkspace(payload.data.repositoryId, context))) {
+      return NextResponse.json({ error: "Repository was not found." }, { status: 404 });
+    }
+
     const result = await removeInstalledRepositoryFromGitHubAndDatabase(
       payload.data.repositoryId,
     );

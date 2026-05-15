@@ -3,7 +3,7 @@ import { Building2, LinkIcon, Mail, MapPin, Pencil, ShieldCheck } from "lucide-r
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { ProfileSaveButton } from "@/components/profile/ProfileSaveButton";
 import { saveProfileAction, signOutAllSessionsAction } from "@/app/profile/actions";
-import { getNotificationSettings } from "@/lib/notifications/settings";
+import { getCurrentNotificationSettings } from "@/lib/notifications/settings";
 import { getCurrentUserProfile } from "@/lib/profile/userProfile";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export default async function ProfilePage({
   const params = searchParams ? await searchParams : {};
   const [profile, notificationSettings] = await Promise.all([
     getCurrentUserProfile(),
-    getNotificationSettings(),
+    getCurrentNotificationSettings(),
   ]);
   const emailAddress = notificationSettings.emailAddress || profile.email || "";
   const wasSaved = params.saved === "1";

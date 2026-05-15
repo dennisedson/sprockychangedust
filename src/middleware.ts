@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 import { type NextRequest, NextResponse } from "next/server";
 import { type CookieOptions, createServerClient } from "@supabase/ssr";
 
@@ -8,6 +9,7 @@ type CookieToSet = {
 };
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
   let response = NextResponse.next({
     request,
   });
@@ -34,9 +36,49 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user && isProtectedApi(pathname)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!user && isProtectedPage(pathname)) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  if (user && isAuthPage(pathname)) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
 
   return response;
+}
+
+function isProtectedPage(pathname: string) {
+  return [
+    "/dashboard",
+    "/github/setup",
+    "/profile",
+    "/repositories",
+    "/settings",
+  ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+function isProtectedApi(pathname: string) {
+  return [
+    "/api/github/disconnect",
+    "/api/issues",
+    "/api/profile",
+    "/api/repositories",
+    "/api/settings",
+  ].some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+function isAuthPage(pathname: string) {
+  return pathname === "/login" || pathname === "/signup";
 }
 
 export const config = {

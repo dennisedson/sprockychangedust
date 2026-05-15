@@ -83,6 +83,11 @@ type IssueWebhookPayload = {
   };
 };
 
+type InstallationOwnerContext = {
+  userId: string;
+  workspaceId: string | null;
+};
+
 export async function handleGitHubInstallationWebhook(payload: InstallationPayload) {
   const repositories =
     payload.repositories || payload.repositories_added || [];
@@ -191,7 +196,10 @@ function mapIssueLabels(
 
 export async function syncInstallationRepositories(
   installationId: number,
-  options: { runInitialScan?: boolean } = {},
+  options: {
+    ownerContext?: InstallationOwnerContext;
+    runInitialScan?: boolean;
+  } = {},
 ) {
   const repositories = await listInstallationRepositories(installationId);
   const runInitialScan = options.runInitialScan ?? true;
@@ -200,6 +208,7 @@ export async function syncInstallationRepositories(
     installationId,
     accountLogin: "unknown",
     isDeleted: false,
+    ownerContext: options.ownerContext,
   });
 
   if (previousStatus === "deleted") {
@@ -226,32 +235,65 @@ async function upsertInstallation(input: {
   installationId: number;
   accountLogin: string;
   isDeleted: boolean;
+  ownerContext?: InstallationOwnerContext;
 }) {
   const supabase = createSupabaseAdminClient();
   const { data: existingInstallation, error: lookupError } = await supabase
     .from("github_app_installations")
-    .select("status")
+    .select("status,github_account_login")
     .eq("installation_id", input.installationId)
-    .maybeSingle<{ status: "active" | "deleted" }>();
+    .maybeSingle<{ github_account_login: string; status: "active" | "deleted" }>();
 
   if (lookupError) {
     throw lookupError;
   }
 
-  const { error } = await supabase.from("github_app_installations").upsert(
-    {
-      installation_id: input.installationId,
-      github_account_login: input.accountLogin,
-      status: input.isDeleted ? "deleted" : "active",
-    },
-    { onConflict: "installation_id" },
-  );
+  const installation = {
+    installation_id: input.installationId,
+    github_account_login:
+      input.accountLogin === "unknown"
+        ? existingInstallation?.github_account_login || input.accountLogin
+        : input.accountLogin,
+    status: input.isDeleted ? "deleted" : "active",
+    ...(input.ownerContext
+      ? {
+          user_id: input.ownerContext.userId,
+          workspace_id: input.ownerContext.workspaceId,
+        }
+      : {}),
+  };
+
+  const { error } = await supabase
+    .from("github_app_installations")
+    .upsert(installation, { onConflict: "installation_id" });
+
+  if (error && input.ownerContext && isMissingWorkspaceColumnError(error)) {
+    const fallbackInstallation = { ...installation };
+    delete fallbackInstallation.workspace_id;
+    const { error: fallbackError } = await supabase
+      .from("github_app_installations")
+      .upsert(fallbackInstallation, { onConflict: "installation_id" });
+
+    if (fallbackError) {
+      throw fallbackError;
+    }
+
+    return existingInstallation?.status || null;
+  }
 
   if (error) {
     throw error;
   }
 
   return existingInstallation?.status || null;
+}
+
+function isMissingWorkspaceColumnError(error: { code?: string; message?: string }) {
+  return (
+    error.code === "42703" ||
+    error.message?.includes("workspace_id") ||
+    false
+  );
 }
 
 async function upsertRepositories(input: {

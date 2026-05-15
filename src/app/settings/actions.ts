@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { saveNotificationSettings } from "@/lib/notifications/settings";
+import { saveCurrentNotificationSettings } from "@/lib/notifications/settings";
 
 const notificationSettingsFormSchema = z.object({
   emailAddress: z
@@ -19,7 +19,7 @@ export async function saveNotificationSettingsAction(formData: FormData) {
     notifyViaGithubIssue: formData.has("notifyViaGithubIssue"),
   });
 
-  await saveNotificationSettings(settings);
+  await saveCurrentNotificationSettings(settings);
   revalidatePath("/settings");
   redirect("/settings?saved=1");
 }

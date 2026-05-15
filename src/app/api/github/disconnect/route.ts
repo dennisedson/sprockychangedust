@@ -2,12 +2,14 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { disconnectGitHubInstallations } from "@/lib/github/disconnect";
+import { requireCurrentWorkspaceContext } from "@/lib/workspaces/currentWorkspace";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
-    const result = await disconnectGitHubInstallations();
+    const context = await requireCurrentWorkspaceContext();
+    const result = await disconnectGitHubInstallations(context);
 
     revalidatePath("/dashboard");
     revalidatePath("/repositories");

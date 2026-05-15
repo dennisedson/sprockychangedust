@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 "use client";
 
 import { useState } from "react";
@@ -23,16 +24,22 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       return;
     }
 
-    window.location.href = isLogin ? "/dashboard" : "/repositories";
+    const nextPath = getSafeNextPath(new URLSearchParams(window.location.search).get("next"));
+    window.location.href = nextPath || (isLogin ? "/dashboard" : "/repositories");
   }
 
   async function handleOAuth(provider: "github" | "google") {
     setStatus(null);
     const supabase = createClientSupabaseClient();
+    const nextPath =
+      getSafeNextPath(new URLSearchParams(window.location.search).get("next")) ||
+      (isLogin ? "/dashboard" : "/repositories");
+    const callbackUrl = new URL("/auth/callback", window.location.origin);
+    callbackUrl.searchParams.set("next", nextPath);
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: callbackUrl.toString(),
       },
     });
 
@@ -50,6 +57,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
             className="input"
             onChange={(event) => setEmail(event.target.value)}
             placeholder={isLogin ? "developer@hubspot.com" : "developer@company.com"}
+            required
             type="email"
             value={email}
           />
@@ -63,6 +71,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
             className="input"
             onChange={(event) => setPassword(event.target.value)}
             placeholder={isLogin ? "••••••••" : "Choose a strong password"}
+            required
             type="password"
             value={password}
           />
@@ -87,4 +96,12 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       {status ? <p className="formStatus">{status}</p> : null}
     </>
   );
+}
+
+function getSafeNextPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return null;
+  }
+
+  return value;
 }

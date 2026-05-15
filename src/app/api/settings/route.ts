@@ -1,39 +1,31 @@
+// @workflow_state: REVIEW
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  getCurrentNotificationSettings,
+  saveCurrentNotificationSettings,
+} from "@/lib/notifications/settings";
 
 export const dynamic = "force-dynamic";
 
 const settingsSchema = z.object({
-  emailAddress: z.string().email(),
+  emailAddress: z.string().email().nullable(),
   notifyViaEmail: z.boolean(),
   notifyViaGithubIssue: z.boolean(),
 });
 
+export async function GET() {
+  return NextResponse.json(await getCurrentNotificationSettings());
+}
+
 export async function POST(request: Request) {
-  const payload = settingsSchema.parse(await request.json());
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const payload = settingsSchema.safeParse(await request.json());
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!payload.success) {
+    return NextResponse.json({ error: "Invalid settings payload." }, { status: 400 });
   }
 
-  const { error } = await supabase.from("user_notification_settings").upsert(
-    {
-      user_id: user.id,
-      email_address: payload.emailAddress,
-      notify_via_email: payload.notifyViaEmail,
-      notify_via_github_issue: payload.notifyViaGithubIssue,
-    },
-    { onConflict: "user_id" },
-  );
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  await saveCurrentNotificationSettings(payload.data);
 
   return NextResponse.json({ ok: true });
 }

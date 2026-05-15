@@ -1,6 +1,10 @@
 // @workflow_state: REVIEW
 import { deleteGitHubAppInstallation } from "@/lib/github/app";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  type CurrentWorkspaceContext,
+  listCurrentWorkspaceInstallationIds,
+} from "@/lib/workspaces/currentWorkspace";
 
 type GitHubInstallationRow = {
   installation_id: number;
@@ -18,7 +22,19 @@ export type GitHubInstallationSummary = {
   activeInstallationCount: number;
 };
 
-export async function getGitHubInstallationSummary(): Promise<GitHubInstallationSummary> {
+export async function getGitHubInstallationSummary(
+  context: CurrentWorkspaceContext,
+): Promise<GitHubInstallationSummary> {
+  const installationIds = await listCurrentWorkspaceInstallationIds(context);
+
+  if (installationIds.length === 0) {
+    return {
+      accountLogins: [],
+      activeInstallationCount: 0,
+      connectedRepositoryCount: 0,
+    };
+  }
+
   const supabase = createSupabaseAdminClient();
   const [{ data: installations, error: installationsError }, { data: repositories, error: repositoriesError }] =
     await Promise.all([
@@ -26,11 +42,13 @@ export async function getGitHubInstallationSummary(): Promise<GitHubInstallation
         .from("github_app_installations")
         .select("installation_id,github_account_login")
         .eq("status", "active")
+        .in("installation_id", installationIds)
         .returns<GitHubInstallationRow[]>(),
       supabase
         .from("installed_repositories")
         .select("id,installation_id")
         .eq("is_active_for_scanning", true)
+        .in("installation_id", installationIds)
         .returns<InstalledRepositoryRow[]>(),
     ]);
 
@@ -57,30 +75,20 @@ export async function getGitHubInstallationSummary(): Promise<GitHubInstallation
   };
 }
 
-export async function disconnectGitHubInstallations() {
-  const supabase = createSupabaseAdminClient();
-  const { data: installations, error } = await supabase
-    .from("github_app_installations")
-    .select("installation_id,github_account_login")
-    .eq("status", "active")
-    .returns<GitHubInstallationRow[]>();
+export async function disconnectGitHubInstallations(context: CurrentWorkspaceContext) {
+  const installationIds = await listCurrentWorkspaceInstallationIds(context);
 
-  if (error) {
-    throw error;
-  }
-
-  if (installations.length === 0) {
+  if (installationIds.length === 0) {
     return {
       disconnectedInstallationCount: 0,
     };
   }
 
-  const installationIds = installations.map((installation) => installation.installation_id);
-
   for (const installationId of installationIds) {
     await deleteGitHubAppInstallation(installationId);
   }
 
+  const supabase = createSupabaseAdminClient();
   const { error: repositoryDeleteError } = await supabase
     .from("installed_repositories")
     .delete()

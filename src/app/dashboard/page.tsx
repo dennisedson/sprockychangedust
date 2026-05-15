@@ -7,6 +7,11 @@ import { listVisibleTrackedIssues } from "@/lib/issues/trackedIssues";
 import { isMissingRepositoryScanColumnError } from "@/lib/scanner/scanInstalledRepository";
 import type { ScanSignal } from "@/lib/scanner/types";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  type CurrentWorkspaceContext,
+  listCurrentWorkspaceInstallationIds,
+  requireCurrentWorkspaceContext,
+} from "@/lib/workspaces/currentWorkspace";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +53,7 @@ type RepositoryImpactRow = {
   created_at: string;
 };
 
-async function getDashboardData() {
+async function getDashboardData(context: CurrentWorkspaceContext) {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     return {
       repositories: [],
@@ -59,10 +64,11 @@ async function getDashboardData() {
   }
 
   const supabase = createSupabaseAdminClient();
+  const repositories = await getDashboardRepositories(context);
+  const repositoryIds = repositories.map((repository) => repository.id);
 
-  const [repositories, changelogEntriesResult, repositoryImpactsResult] =
+  const [changelogEntriesResult, repositoryImpacts] =
     await Promise.all([
-      getDashboardRepositories(),
       supabase
         .from("changelog_entries")
         .select(
@@ -71,39 +77,35 @@ async function getDashboardData() {
         .order("publication_date", { ascending: false })
         .limit(25)
         .returns<ChangelogEntryRow[]>(),
-      supabase
-        .from("repository_impacts")
-        .select(
-          "id,changelog_entry_id,installed_repository_id,has_hubspot_usage,scan_signals,created_at",
-        )
-        .order("created_at", { ascending: false })
-        .limit(75)
-        .returns<RepositoryImpactRow[]>(),
+      getDashboardRepositoryImpacts(repositoryIds),
     ]);
 
   if (changelogEntriesResult.error) {
     throw changelogEntriesResult.error;
   }
 
-  if (repositoryImpactsResult.error) {
-    throw repositoryImpactsResult.error;
-  }
-
   return {
     repositories,
     changelogEntries: changelogEntriesResult.data,
-    repositoryImpacts: repositoryImpactsResult.data,
-    trackedIssues: await listVisibleTrackedIssues(),
+    repositoryImpacts,
+    trackedIssues: await listVisibleTrackedIssues({ repositoryIds }),
   };
 }
 
-async function getDashboardRepositories() {
+async function getDashboardRepositories(context: CurrentWorkspaceContext) {
+  const installationIds = await listCurrentWorkspaceInstallationIds(context);
+
+  if (installationIds.length === 0) {
+    return [];
+  }
+
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("installed_repositories")
     .select(
       "id,repo_name,is_active_for_scanning,monitoring_status,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
     )
+    .in("installation_id", installationIds)
     .order("created_at", { ascending: false })
     .limit(100)
     .returns<RepositoryRow[]>();
@@ -118,6 +120,7 @@ async function getDashboardRepositories() {
       .select(
         "id,repo_name,is_active_for_scanning,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
       )
+      .in("installation_id", installationIds)
       .order("created_at", { ascending: false })
       .limit(100)
       .returns<Omit<RepositoryRow, "monitoring_status">[]>();
@@ -136,6 +139,7 @@ async function getDashboardRepositories() {
     const { data: fallbackData, error: fallbackError } = await supabase
       .from("installed_repositories")
       .select("id,repo_name,is_active_for_scanning,last_scanned_at,created_at")
+      .in("installation_id", installationIds)
       .order("created_at", { ascending: false })
       .limit(100)
       .returns<BaseRepositoryRow[]>();
@@ -155,6 +159,29 @@ async function getDashboardRepositories() {
   throw error;
 }
 
+async function getDashboardRepositoryImpacts(repositoryIds: string[]) {
+  if (repositoryIds.length === 0) {
+    return [];
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("repository_impacts")
+    .select(
+      "id,changelog_entry_id,installed_repository_id,has_hubspot_usage,scan_signals,created_at",
+    )
+    .in("installed_repository_id", repositoryIds)
+    .order("created_at", { ascending: false })
+    .limit(75)
+    .returns<RepositoryImpactRow[]>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
 function isMissingMonitoringStatusColumnError(error: { code?: string; message?: string }) {
   return (
     error.code === "42703" ||
@@ -164,7 +191,8 @@ function isMissingMonitoringStatusColumnError(error: { code?: string; message?: 
 }
 
 export default async function DashboardPage() {
-  const dashboardData = await getDashboardData();
+  const context = await requireCurrentWorkspaceContext();
+  const dashboardData = await getDashboardData(context);
 
   return (
     <DashboardShell active="Dashboard">

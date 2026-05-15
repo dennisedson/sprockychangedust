@@ -10,6 +10,11 @@ import {
 import { createImpactIssue } from "@/lib/notifications/githubIssue";
 import type { ScanSignal } from "@/lib/scanner/types";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  listCurrentWorkspaceInstallationIds,
+  listCurrentWorkspaceRepositoryIds,
+  requireCurrentWorkspaceContext,
+} from "@/lib/workspaces/currentWorkspace";
 
 const issueRequestSchema = z.object({
   changelogEntryId: z.string().uuid(),
@@ -65,35 +70,39 @@ export async function POST(request: Request) {
   }
 
   const supabase = createSupabaseAdminClient();
-  const { changelogEntryId, repositoryIds } = payload.data;
+  const context = await requireCurrentWorkspaceContext();
+  const installationIds = await listCurrentWorkspaceInstallationIds(context);
+  const { changelogEntryId } = payload.data;
 
-  const [entryResult, repositories, impactResult] = await Promise.all([
+  const [entryResult, repositories] = await Promise.all([
     supabase
       .from("changelog_entries")
       .select("id,title,link,ai_summary,ai_severity_level,migration_steps")
       .eq("id", changelogEntryId)
       .single<ChangelogEntryRow>(),
-    getIssueRepositories(repositoryIds),
-    supabase
-      .from("repository_impacts")
-      .select("installed_repository_id,scan_signals")
-      .eq("changelog_entry_id", changelogEntryId)
-      .in("installed_repository_id", repositoryIds)
-      .eq("has_hubspot_usage", true)
-      .order("created_at", { ascending: false })
-      .returns<RepositoryImpactRow[]>(),
+    getIssueRepositories(payload.data.repositoryIds, installationIds),
   ]);
+  const repositoryIds = repositories.map((repository) => repository.id);
 
   if (entryResult.error) {
     return NextResponse.json({ error: "Changelog entry was not found." }, { status: 404 });
   }
 
-  if (impactResult.error) {
-    return NextResponse.json({ error: "Repository impact lookup failed." }, { status: 500 });
-  }
-
   if (repositories.length === 0) {
     return NextResponse.json({ error: "No repositories were found." }, { status: 404 });
+  }
+
+  const impactResult = await supabase
+    .from("repository_impacts")
+    .select("installed_repository_id,scan_signals")
+    .eq("changelog_entry_id", changelogEntryId)
+    .in("installed_repository_id", repositoryIds)
+    .eq("has_hubspot_usage", true)
+    .order("created_at", { ascending: false })
+    .returns<RepositoryImpactRow[]>();
+
+  if (impactResult.error) {
+    return NextResponse.json({ error: "Repository impact lookup failed." }, { status: 500 });
   }
 
   let existingIssues;
@@ -223,7 +232,11 @@ export async function POST(request: Request) {
   });
 }
 
-async function getIssueRepositories(repositoryIds: string[]) {
+async function getIssueRepositories(repositoryIds: string[], installationIds: number[]) {
+  if (installationIds.length === 0) {
+    return [];
+  }
+
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("installed_repositories")
@@ -231,6 +244,7 @@ async function getIssueRepositories(repositoryIds: string[]) {
       "id,installation_id,repo_name,is_active_for_scanning,monitoring_status,latest_scan_signals",
     )
     .in("id", repositoryIds)
+    .in("installation_id", installationIds)
     .returns<RepositoryRow[]>();
 
   if (!error) {
@@ -245,6 +259,7 @@ async function getIssueRepositories(repositoryIds: string[]) {
     .from("installed_repositories")
     .select("id,installation_id,repo_name,is_active_for_scanning,latest_scan_signals")
     .in("id", repositoryIds)
+    .in("installation_id", installationIds)
     .returns<Omit<RepositoryRow, "monitoring_status">[]>();
 
   if (fallbackError) {
@@ -273,7 +288,9 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    await dismissTrackedIssue(payload.data.trackedIssueId);
+    const context = await requireCurrentWorkspaceContext();
+    const repositoryIds = await listCurrentWorkspaceRepositoryIds(context);
+    await dismissTrackedIssue(payload.data.trackedIssueId, { repositoryIds });
   } catch (error) {
     if (
       typeof error === "object" &&

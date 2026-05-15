@@ -9,11 +9,18 @@ import {
 } from "@/lib/scanner/scanInstalledRepository";
 import { removeInstalledRepositoryFromGitHubAndDatabase } from "@/lib/repositories/removeRepository";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  isRepositoryInCurrentWorkspace,
+  listCurrentWorkspaceInstallationIds,
+  requireCurrentWorkspaceContext,
+} from "@/lib/workspaces/currentWorkspace";
 
 type MonitoringStatus = "pending" | "watched" | "ignored";
 
 export async function scanAllRepositoriesAction() {
-  await scanInstalledRepositories();
+  const context = await requireCurrentWorkspaceContext();
+  const installationIds = await listCurrentWorkspaceInstallationIds(context);
+  await scanInstalledRepositories({ installationIds });
   revalidatePath("/repositories");
 }
 
@@ -21,6 +28,12 @@ export async function scanRepositoryAction(formData: FormData) {
   const repositoryId = formData.get("repositoryId");
 
   if (typeof repositoryId !== "string" || repositoryId.length === 0) {
+    return;
+  }
+
+  const context = await requireCurrentWorkspaceContext();
+
+  if (!(await isRepositoryInCurrentWorkspace(repositoryId, context))) {
     return;
   }
 
@@ -40,6 +53,12 @@ export async function removeRepositoryAction(formData: FormData) {
   const repositoryId = formData.get("repositoryId");
 
   if (typeof repositoryId !== "string" || repositoryId.length === 0) {
+    return;
+  }
+
+  const context = await requireCurrentWorkspaceContext();
+
+  if (!(await isRepositoryInCurrentWorkspace(repositoryId, context))) {
     return;
   }
 
@@ -75,6 +94,12 @@ async function updateRepositoryConnection(formData: FormData, isActiveForScannin
   }
 
   const supabase = createSupabaseAdminClient();
+  const context = await requireCurrentWorkspaceContext();
+
+  if (!(await isRepositoryInCurrentWorkspace(repositoryId, context))) {
+    return;
+  }
+
   const { error } = await supabase
     .from("installed_repositories")
     .update({ is_active_for_scanning: isActiveForScanning })
@@ -98,6 +123,12 @@ async function updateRepositoryMonitoringStatus(
   }
 
   const supabase = createSupabaseAdminClient();
+  const context = await requireCurrentWorkspaceContext();
+
+  if (!(await isRepositoryInCurrentWorkspace(repositoryId, context))) {
+    return null;
+  }
+
   const { error } = await supabase
     .from("installed_repositories")
     .update({ monitoring_status: monitoringStatus })

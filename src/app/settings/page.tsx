@@ -6,7 +6,8 @@ import { SettingsSaveButton } from "@/components/settings/SettingsSaveButton";
 import { saveNotificationSettingsAction } from "@/app/settings/actions";
 import { getGitHubInstallUrl } from "@/lib/github/app";
 import { getGitHubInstallationSummary } from "@/lib/github/disconnect";
-import { getNotificationSettings } from "@/lib/notifications/settings";
+import { getCurrentNotificationSettings } from "@/lib/notifications/settings";
+import { requireCurrentWorkspaceContext } from "@/lib/workspaces/currentWorkspace";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +17,9 @@ export default async function SettingsPage({
   searchParams?: Promise<{ saved?: string }>;
 }) {
   const params = searchParams ? await searchParams : {};
-  const settings = await getNotificationSettings();
-  const githubSummary = await getGitHubInstallationSummary();
+  const context = await requireCurrentWorkspaceContext();
+  const settings = await getCurrentNotificationSettings();
+  const githubSummary = await getGitHubInstallationSummary(context);
   const wasSaved = params.saved === "1";
   const isGitHubConnected = githubSummary.activeInstallationCount > 0;
 

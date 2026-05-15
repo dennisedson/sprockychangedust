@@ -46,18 +46,28 @@ export function isMissingTrackedIssuesTableError(error: { code?: string; message
   );
 }
 
-export async function listVisibleTrackedIssues() {
+export async function listVisibleTrackedIssues(input: { repositoryIds?: string[] } = {}) {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     return [];
   }
 
+  if (input.repositoryIds?.length === 0) {
+    return [];
+  }
+
   const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("tracked_issues")
     .select(
       "id,changelog_entry_id,installed_repository_id,github_issue_number,github_issue_url,github_issue_state,github_issue_assignees,github_issue_labels,created_at,changelog_entries(title,link,ai_severity_level),installed_repositories(repo_name)",
     )
-    .is("dismissed_at", null)
+    .is("dismissed_at", null);
+
+  if (input.repositoryIds) {
+    query = query.in("installed_repository_id", input.repositoryIds);
+  }
+
+  const { data, error } = await query
     .order("created_at", { ascending: false })
     .limit(100)
     .returns<TrackedIssueRow[]>();
@@ -129,15 +139,28 @@ export async function listExistingOpenTrackedIssues(input: {
   return data.map(mapTrackedIssueRow);
 }
 
-export async function dismissTrackedIssue(trackedIssueId: string) {
+export async function dismissTrackedIssue(
+  trackedIssueId: string,
+  input: { repositoryIds?: string[] } = {},
+) {
+  if (input.repositoryIds?.length === 0) {
+    return;
+  }
+
   const supabase = createSupabaseAdminClient();
-  const { error } = await supabase
+  let query = supabase
     .from("tracked_issues")
     .update({
       dismissed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq("id", trackedIssueId);
+
+  if (input.repositoryIds) {
+    query = query.in("installed_repository_id", input.repositoryIds);
+  }
+
+  const { error } = await query;
 
   if (error) {
     throw error;

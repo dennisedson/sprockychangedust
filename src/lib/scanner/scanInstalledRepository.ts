@@ -24,6 +24,7 @@ type SupabaseError = {
 
 type ScanOptions = {
   installationId?: number;
+  installationIds?: number[];
   limit?: number;
 };
 
@@ -95,12 +96,22 @@ export async function scanInstalledRepositoryById(repositoryId: string) {
 }
 
 export async function scanInstalledRepositories(options: ScanOptions = {}) {
+  if (options.installationIds?.length === 0) {
+    return [];
+  }
+
   const supabase = createSupabaseAdminClient();
   let query = supabase
     .from("installed_repositories")
     .select("id,installation_id,repo_name")
     .eq("is_active_for_scanning", true)
     .order("created_at", { ascending: false });
+
+  if (options.installationIds) {
+    query = query.in("installation_id", options.installationIds);
+  } else if (options.installationId) {
+    query = query.eq("installation_id", options.installationId);
+  }
 
   if (options.limit) {
     query = query.limit(options.limit);
@@ -170,6 +181,10 @@ export async function scanInstalledRepositoriesByInstallationId(
 }
 
 export async function scanQueuedInstalledRepositories(options: ScanOptions = {}) {
+  if (options.installationIds?.length === 0) {
+    return [];
+  }
+
   const supabase = createSupabaseAdminClient();
   let query = supabase
     .from("installed_repositories")
@@ -178,7 +193,9 @@ export async function scanQueuedInstalledRepositories(options: ScanOptions = {})
     .eq("scan_status", "pending")
     .order("created_at", { ascending: true });
 
-  if (options.installationId) {
+  if (options.installationIds) {
+    query = query.in("installation_id", options.installationIds);
+  } else if (options.installationId) {
     query = query.eq("installation_id", options.installationId);
   }
 
@@ -196,8 +213,12 @@ export async function scanQueuedInstalledRepositories(options: ScanOptions = {})
 }
 
 export async function countQueuedInstalledRepositoryScans(
-  options: Pick<ScanOptions, "installationId"> = {},
+  options: Pick<ScanOptions, "installationId" | "installationIds"> = {},
 ) {
+  if (options.installationIds?.length === 0) {
+    return 0;
+  }
+
   const supabase = createSupabaseAdminClient();
   let query = supabase
     .from("installed_repositories")
@@ -205,7 +226,9 @@ export async function countQueuedInstalledRepositoryScans(
     .eq("is_active_for_scanning", true)
     .eq("scan_status", "pending");
 
-  if (options.installationId) {
+  if (options.installationIds) {
+    query = query.in("installation_id", options.installationIds);
+  } else if (options.installationId) {
     query = query.eq("installation_id", options.installationId);
   }
 

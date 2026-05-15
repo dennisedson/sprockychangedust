@@ -1,6 +1,11 @@
+// @workflow_state: REVIEW
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  isRepositoryInCurrentWorkspace,
+  requireCurrentWorkspaceContext,
+} from "@/lib/workspaces/currentWorkspace";
 
 export const dynamic = "force-dynamic";
 
@@ -11,15 +16,13 @@ const toggleSchema = z.object({
 
 export async function POST(request: Request) {
   const payload = toggleSchema.parse(await request.json());
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const context = await requireCurrentWorkspaceContext();
 
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await isRepositoryInCurrentWorkspace(payload.repositoryId, context))) {
+    return NextResponse.json({ error: "Repository was not found." }, { status: 404 });
   }
 
+  const supabase = createSupabaseAdminClient();
   const { error } = await supabase
     .from("installed_repositories")
     .update({ is_active_for_scanning: payload.isActiveForScanning })

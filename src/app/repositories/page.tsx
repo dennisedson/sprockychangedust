@@ -24,6 +24,11 @@ import { getGitHubInstallUrl } from "@/lib/github/app";
 import { isMissingRepositoryScanColumnError } from "@/lib/scanner/scanInstalledRepository";
 import type { ScanSignal } from "@/lib/scanner/types";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  type CurrentWorkspaceContext,
+  listCurrentWorkspaceInstallationIds,
+  requireCurrentWorkspaceContext,
+} from "@/lib/workspaces/currentWorkspace";
 
 export const dynamic = "force-dynamic";
 
@@ -83,8 +88,14 @@ type RepositoryImpactSuggestionRow = {
   } | null;
 };
 
-async function getRepositories() {
+async function getRepositories(context: CurrentWorkspaceContext) {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    return [];
+  }
+
+  const installationIds = await listCurrentWorkspaceInstallationIds(context);
+
+  if (installationIds.length === 0) {
     return [];
   }
 
@@ -94,6 +105,7 @@ async function getRepositories() {
     .select(
       "id,repo_name,is_active_for_scanning,monitoring_status,has_hubspot_usage,latest_scan_signals,last_scan_error,last_scanned_at,scan_status,created_at",
     )
+    .in("installation_id", installationIds)
     .order("created_at", { ascending: false })
     .returns<RepositoryRow[]>();
 
@@ -104,6 +116,7 @@ async function getRepositories() {
         .select(
           "id,repo_name,is_active_for_scanning,monitoring_status,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
         )
+        .in("installation_id", installationIds)
         .order("created_at", { ascending: false })
         .returns<Omit<RepositoryRow, "last_scan_error" | "scan_status">[]>();
 
@@ -124,6 +137,7 @@ async function getRepositories() {
         .select(
           "id,repo_name,is_active_for_scanning,has_hubspot_usage,latest_scan_signals,last_scan_error,last_scanned_at,scan_status,created_at",
         )
+        .in("installation_id", installationIds)
         .order("created_at", { ascending: false })
         .returns<Omit<RepositoryRow, "monitoring_status">[]>();
 
@@ -141,6 +155,7 @@ async function getRepositories() {
       const { data: fallbackData, error: fallbackError } = await supabase
         .from("installed_repositories")
         .select("id,repo_name,is_active_for_scanning,last_scanned_at,created_at")
+        .in("installation_id", installationIds)
         .order("created_at", { ascending: false })
         .returns<BaseRepositoryRow[]>();
 
@@ -167,10 +182,12 @@ async function getRepositories() {
 export default async function RepositoriesPage({ searchParams }: RepositoriesPageProps) {
   const params = await searchParams;
   const activeFilter = normalizeRepositoryFilter(params?.filter);
-  const repositories = await getRepositories();
+  const context = await requireCurrentWorkspaceContext();
+  const repositories = await getRepositories(context);
   const visibleRepositories = filterRepositories(repositories, activeFilter);
-  const trackedIssues = await listVisibleTrackedIssues();
-  const issueSuggestions = await listIssueSuggestions();
+  const repositoryIds = repositories.map((repository) => repository.id);
+  const trackedIssues = await listVisibleTrackedIssues({ repositoryIds });
+  const issueSuggestions = await listIssueSuggestions(repositoryIds);
   const setupInstallationId = normalizeInstallationId(params?.installationId);
   const pendingScanCount = repositories.filter(
     (repo) => repo.is_active_for_scanning && repo.scan_status === "pending",
@@ -364,8 +381,12 @@ function GitHubSetupBanner({
   );
 }
 
-async function listIssueSuggestions() {
+async function listIssueSuggestions(repositoryIds: string[]) {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    return [];
+  }
+
+  if (repositoryIds.length === 0) {
     return [];
   }
 
@@ -376,6 +397,7 @@ async function listIssueSuggestions() {
       "id,changelog_entry_id,installed_repository_id,match_confidence,changelog_entries(title,link,ai_severity_level)",
     )
     .eq("has_hubspot_usage", true)
+    .in("installed_repository_id", repositoryIds)
     .order("created_at", { ascending: false })
     .limit(100)
     .returns<RepositoryImpactSuggestionRow[]>();
