@@ -95,11 +95,16 @@ export function DashboardOverview({
   const criticalChangelogs = changelogEntries.filter(
     (entry) => entry.ai_severity_level === "red",
   );
-  const [activePanel, setActivePanel] = useState<DashboardPanel>(
-    changelogEntries.length > 0 ? "changelogs" : "repositories",
-  );
+  const [activePanel, setActivePanel] = useState<DashboardPanel>("changelogs");
 
   const stats = [
+    {
+      id: "changelogs" as const,
+      title: "Changelog Entries",
+      value: changelogEntries.length.toString(),
+      helper: getLatestChangelogHelper(changelogEntries),
+      icon: BookOpenText,
+    },
     {
       id: "repositories" as const,
       title: "Connected Repositories",
@@ -118,13 +123,6 @@ export function DashboardOverview({
             ? "1 changelog needs review"
             : `${criticalChangelogs.length} changelogs need review`,
       icon: AlertTriangle,
-    },
-    {
-      id: "changelogs" as const,
-      title: "Changelog Entries",
-      value: changelogEntries.length.toString(),
-      helper: getLatestChangelogHelper(changelogEntries),
-      icon: BookOpenText,
     },
   ];
 
