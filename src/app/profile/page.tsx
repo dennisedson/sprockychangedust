@@ -3,6 +3,7 @@ import { Building2, LinkIcon, Mail, MapPin, Pencil, ShieldCheck } from "lucide-r
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { ProfileSaveButton } from "@/components/profile/ProfileSaveButton";
 import { saveProfileAction, signOutAllSessionsAction } from "@/app/profile/actions";
+import { getNotificationSettings } from "@/lib/notifications/settings";
 import { getCurrentUserProfile } from "@/lib/profile/userProfile";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,11 @@ export default async function ProfilePage({
   searchParams?: Promise<{ saved?: string }>;
 }) {
   const params = searchParams ? await searchParams : {};
-  const profile = await getCurrentUserProfile();
+  const [profile, notificationSettings] = await Promise.all([
+    getCurrentUserProfile(),
+    getNotificationSettings(),
+  ]);
+  const emailAddress = notificationSettings.emailAddress || profile.email || "";
   const wasSaved = params.saved === "1";
 
   return (
@@ -28,7 +33,7 @@ export default async function ProfilePage({
             Edit Profile
           </a>
           <dl>
-            <ProfileFact icon={Mail} value={profile.email || "No email available"} />
+            <ProfileFact icon={Mail} value={emailAddress || "Email not set"} />
             <ProfileFact icon={Building2} value={profile.company || "Company not set"} />
             <ProfileFact icon={MapPin} value={profile.location || "Location not set"} />
             <ProfileFact
@@ -69,9 +74,10 @@ export default async function ProfilePage({
               Email Address
               <input
                 className="input"
-                readOnly
+                defaultValue={emailAddress}
+                name="emailAddress"
+                placeholder="you@example.com"
                 type="email"
-                value={profile.email || ""}
               />
             </label>
             <div className="formGrid">
