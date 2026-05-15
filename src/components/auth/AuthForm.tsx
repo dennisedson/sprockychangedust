@@ -7,6 +7,8 @@ import Link from "next/link";
 import { Github } from "lucide-react";
 import { createClientSupabaseClient } from "@/lib/supabase/client";
 
+const authRequestTimeoutMs = 15000;
+
 type FormStatus = {
   message: string;
   tone: "error" | "success";
@@ -26,11 +28,14 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
     const nextPath = getSafeNextPath(new URLSearchParams(window.location.search).get("next"));
     const destination = nextPath || (isLogin ? "/dashboard" : "/repositories");
-    const supabase = createClientSupabaseClient();
 
     try {
+      const supabase = createClientSupabaseClient();
+
       if (isLogin) {
-        const response = await supabase.auth.signInWithPassword({ email, password });
+        const response = await withAuthTimeout(
+          supabase.auth.signInWithPassword({ email, password }),
+        );
 
         if (response.error) {
           setStatus({ message: response.error.message, tone: "error" });
@@ -43,13 +48,15 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
       const callbackUrl = new URL("/auth/callback", window.location.origin);
       callbackUrl.searchParams.set("next", destination);
-      const response = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: callbackUrl.toString(),
-        },
-      });
+      const response = await withAuthTimeout(
+        supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: callbackUrl.toString(),
+          },
+        }),
+      );
 
       if (response.error) {
         setStatus({ message: response.error.message, tone: "error" });
@@ -65,9 +72,9 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       }
 
       window.location.href = destination;
-    } catch {
+    } catch (error) {
       setStatus({
-        message: "Authentication failed. Please try again.",
+        message: error instanceof Error ? error.message : "Authentication failed. Please try again.",
         tone: "error",
       });
     } finally {
@@ -78,21 +85,32 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   async function handleOAuth(provider: "github" | "google") {
     setStatus(null);
     setIsSubmitting(true);
-    const supabase = createClientSupabaseClient();
-    const nextPath =
-      getSafeNextPath(new URLSearchParams(window.location.search).get("next")) ||
-      (isLogin ? "/dashboard" : "/repositories");
-    const callbackUrl = new URL("/auth/callback", window.location.origin);
-    callbackUrl.searchParams.set("next", nextPath);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo: callbackUrl.toString(),
-      },
-    });
 
-    if (error) {
-      setStatus({ message: error.message, tone: "error" });
+    try {
+      const supabase = createClientSupabaseClient();
+      const nextPath =
+        getSafeNextPath(new URLSearchParams(window.location.search).get("next")) ||
+        (isLogin ? "/dashboard" : "/repositories");
+      const callbackUrl = new URL("/auth/callback", window.location.origin);
+      callbackUrl.searchParams.set("next", nextPath);
+      const { error } = await withAuthTimeout(
+        supabase.auth.signInWithOAuth({
+          provider,
+          options: {
+            redirectTo: callbackUrl.toString(),
+          },
+        }),
+      );
+
+      if (error) {
+        setStatus({ message: error.message, tone: "error" });
+        setIsSubmitting(false);
+      }
+    } catch (error) {
+      setStatus({
+        message: error instanceof Error ? error.message : "Authentication failed. Please try again.",
+        tone: "error",
+      });
       setIsSubmitting(false);
     }
   }
@@ -103,6 +121,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         <label>
           Email Address
           <input
+            autoComplete="email"
             className="input"
             onChange={(event) => setEmail(event.target.value)}
             placeholder={isLogin ? "developer@hubspot.com" : "developer@company.com"}
@@ -117,6 +136,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
             {isLogin ? <Link href="/login">Forgot Password?</Link> : null}
           </span>
           <input
+            autoComplete={isLogin ? "current-password" : "new-password"}
             className="input"
             onChange={(event) => setPassword(event.target.value)}
             placeholder={isLogin ? "••••••••" : "Choose a strong password"}
@@ -155,7 +175,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         </button>
       </div>
       {status ? (
-        <p className="formStatus" data-tone={status.tone} role="status">
+        <p aria-live="polite" className="formStatus" data-tone={status.tone} role="status">
           {status.message}
         </p>
       ) : null}
@@ -169,4 +189,21 @@ function getSafeNextPath(value: string | null) {
   }
 
   return value;
+}
+
+async function withAuthTimeout<T>(request: Promise<T>) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error("Authentication request timed out. Check Supabase auth settings and try again."));
+    }, authRequestTimeoutMs);
+  });
+
+  try {
+    return await Promise.race([request, timeout]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
