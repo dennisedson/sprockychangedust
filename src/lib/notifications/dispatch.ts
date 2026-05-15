@@ -27,6 +27,7 @@ type RepositoryRow = {
   installation_id: number;
   repo_name: string;
   is_active_for_scanning: boolean;
+  monitoring_status: "pending" | "watched" | "ignored";
 };
 
 type ChangelogEntryRow = {
@@ -59,8 +60,14 @@ type GitHubIssueAssignee = {
   login?: string | null;
 };
 
+type SupabaseError = {
+  code?: string;
+  message?: string;
+};
+
 type DispatchImpactNotificationsOptions = {
   forceFreshScan?: boolean;
+  repositoryIds?: string[];
 };
 
 export async function dispatchImpactNotifications(
@@ -80,15 +87,7 @@ export async function dispatchImpactNotifications(
     throw entryError;
   }
 
-  const { data: repositories, error: repositoryError } = await supabase
-    .from("installed_repositories")
-    .select("id,installation_id,repo_name,is_active_for_scanning")
-    .eq("is_active_for_scanning", true)
-    .returns<RepositoryRow[]>();
-
-  if (repositoryError) {
-    throw repositoryError;
-  }
+  const repositories = await getWatchedRepositories(options.repositoryIds);
 
   const notifiedRepositories: string[] = [];
   const settings = await getNotificationSettings();
@@ -268,6 +267,54 @@ function createRepositoryImpactInput(input: {
   };
 }
 
+async function getWatchedRepositories(repositoryIds?: string[]) {
+  if (repositoryIds && repositoryIds.length === 0) {
+    return [];
+  }
+
+  const supabase = createSupabaseAdminClient();
+  let query = supabase
+    .from("installed_repositories")
+    .select("id,installation_id,repo_name,is_active_for_scanning,monitoring_status")
+    .eq("is_active_for_scanning", true)
+    .eq("monitoring_status", "watched");
+
+  if (repositoryIds) {
+    query = query.in("id", repositoryIds);
+  }
+
+  const { data, error } = await query.returns<RepositoryRow[]>();
+
+  if (!error) {
+    return data;
+  }
+
+  if (!isMissingMonitoringStatusColumnError(error)) {
+    throw error;
+  }
+
+  let fallbackQuery = supabase
+    .from("installed_repositories")
+    .select("id,installation_id,repo_name,is_active_for_scanning")
+    .eq("is_active_for_scanning", true);
+
+  if (repositoryIds) {
+    fallbackQuery = fallbackQuery.in("id", repositoryIds);
+  }
+
+  const { data: fallbackData, error: fallbackError } =
+    await fallbackQuery.returns<Omit<RepositoryRow, "monitoring_status">[]>();
+
+  if (fallbackError) {
+    throw fallbackError;
+  }
+
+  return fallbackData.map((repository) => ({
+    ...repository,
+    monitoring_status: "watched" as const,
+  }));
+}
+
 async function getRepositoryManifestMap(repositoryIds: string[]) {
   if (repositoryIds.length === 0) {
     return new Map<string, RepositoryManifest>();
@@ -288,6 +335,14 @@ async function getRepositoryManifestMap(repositoryIds: string[]) {
 
   return new Map(
     data.map((row) => [row.installed_repository_id, mapRepositoryManifestRow(row)]),
+  );
+}
+
+function isMissingMonitoringStatusColumnError(error: SupabaseError) {
+  return (
+    error.code === "42703" ||
+    error.message?.includes("monitoring_status") ||
+    false
   );
 }
 

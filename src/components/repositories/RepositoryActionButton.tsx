@@ -1,10 +1,10 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
-import { Link2, RotateCcw, Unlink2 } from "lucide-react";
+import { CheckCircle2, EyeOff, Link2, RotateCcw, Unlink2 } from "lucide-react";
 
 type RepositoryActionButtonProps = {
-  icon: "disconnect" | "reconnect" | "scan";
+  icon: "disconnect" | "ignore" | "reconnect" | "scan" | "watch";
   label: string;
   pendingLabel: string;
   size?: "default" | "small";
@@ -14,8 +14,10 @@ type RepositoryActionButtonProps = {
 
 const icons = {
   disconnect: Unlink2,
+  ignore: EyeOff,
   reconnect: Link2,
   scan: RotateCcw,
+  watch: CheckCircle2,
 };
 
 export function RepositoryActionButton({

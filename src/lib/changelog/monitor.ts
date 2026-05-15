@@ -128,3 +128,37 @@ export async function backfillStoredChangelogEntries(options: {
     dispatches,
   };
 }
+
+export async function checkRepositoryAgainstStoredChangelogs(options: {
+  repositoryId: string;
+  limit?: number;
+  forceFreshScan?: boolean;
+}) {
+  const supabase = createSupabaseAdminClient();
+  const { data: entries, error } = await supabase
+    .from("changelog_entries")
+    .select("id")
+    .order("publication_date", { ascending: false })
+    .limit(options.limit || 20)
+    .returns<Array<{ id: string }>>();
+
+  if (error) {
+    throw error;
+  }
+
+  const dispatches = [];
+
+  for (const entry of entries) {
+    dispatches.push(
+      await dispatchImpactNotifications(entry.id, {
+        forceFreshScan: options.forceFreshScan,
+        repositoryIds: [options.repositoryId],
+      }),
+    );
+  }
+
+  return {
+    checked: entries.length,
+    dispatches,
+  };
+}

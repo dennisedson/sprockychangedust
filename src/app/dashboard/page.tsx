@@ -4,6 +4,7 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { IssueAutoRefresh } from "@/components/issues/IssueAutoRefresh";
 import { env } from "@/lib/env";
 import { listVisibleTrackedIssues } from "@/lib/issues/trackedIssues";
+import { isMissingRepositoryScanColumnError } from "@/lib/scanner/scanInstalledRepository";
 import type { ScanSignal } from "@/lib/scanner/types";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -13,11 +14,17 @@ type RepositoryRow = {
   id: string;
   repo_name: string;
   is_active_for_scanning: boolean;
+  monitoring_status: "pending" | "watched" | "ignored";
   has_hubspot_usage: boolean;
   latest_scan_signals: ScanSignal[] | null;
   last_scanned_at: string | null;
   created_at: string;
 };
+
+type BaseRepositoryRow = Omit<
+  RepositoryRow,
+  "has_hubspot_usage" | "latest_scan_signals" | "monitoring_status"
+>;
 
 type ChangelogEntryRow = {
   id: string;
@@ -53,16 +60,9 @@ async function getDashboardData() {
 
   const supabase = createSupabaseAdminClient();
 
-  const [repositoriesResult, changelogEntriesResult, repositoryImpactsResult] =
+  const [repositories, changelogEntriesResult, repositoryImpactsResult] =
     await Promise.all([
-      supabase
-        .from("installed_repositories")
-        .select(
-          "id,repo_name,is_active_for_scanning,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
-        )
-        .order("created_at", { ascending: false })
-        .limit(100)
-        .returns<RepositoryRow[]>(),
+      getDashboardRepositories(),
       supabase
         .from("changelog_entries")
         .select(
@@ -81,10 +81,6 @@ async function getDashboardData() {
         .returns<RepositoryImpactRow[]>(),
     ]);
 
-  if (repositoriesResult.error) {
-    throw repositoriesResult.error;
-  }
-
   if (changelogEntriesResult.error) {
     throw changelogEntriesResult.error;
   }
@@ -94,11 +90,77 @@ async function getDashboardData() {
   }
 
   return {
-    repositories: repositoriesResult.data,
+    repositories,
     changelogEntries: changelogEntriesResult.data,
     repositoryImpacts: repositoryImpactsResult.data,
     trackedIssues: await listVisibleTrackedIssues(),
   };
+}
+
+async function getDashboardRepositories() {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("installed_repositories")
+    .select(
+      "id,repo_name,is_active_for_scanning,monitoring_status,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
+    )
+    .order("created_at", { ascending: false })
+    .limit(100)
+    .returns<RepositoryRow[]>();
+
+  if (!error) {
+    return data;
+  }
+
+  if (isMissingMonitoringStatusColumnError(error)) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from("installed_repositories")
+      .select(
+        "id,repo_name,is_active_for_scanning,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
+      )
+      .order("created_at", { ascending: false })
+      .limit(100)
+      .returns<Omit<RepositoryRow, "monitoring_status">[]>();
+
+    if (fallbackError) {
+      throw fallbackError;
+    }
+
+    return fallbackData.map((repo) => ({
+      ...repo,
+      monitoring_status: repo.has_hubspot_usage ? "watched" as const : "pending" as const,
+    }));
+  }
+
+  if (isMissingRepositoryScanColumnError(error)) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from("installed_repositories")
+      .select("id,repo_name,is_active_for_scanning,last_scanned_at,created_at")
+      .order("created_at", { ascending: false })
+      .limit(100)
+      .returns<BaseRepositoryRow[]>();
+
+    if (fallbackError) {
+      throw fallbackError;
+    }
+
+    return fallbackData.map((repo) => ({
+      ...repo,
+      monitoring_status: "watched" as const,
+      has_hubspot_usage: false,
+      latest_scan_signals: null,
+    }));
+  }
+
+  throw error;
+}
+
+function isMissingMonitoringStatusColumnError(error: { code?: string; message?: string }) {
+  return (
+    error.code === "42703" ||
+    error.message?.includes("monitoring_status") ||
+    false
+  );
 }
 
 export default async function DashboardPage() {

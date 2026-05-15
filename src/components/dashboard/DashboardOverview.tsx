@@ -20,6 +20,7 @@ type Repository = {
   id: string;
   repo_name: string;
   is_active_for_scanning: boolean;
+  monitoring_status: "pending" | "watched" | "ignored";
   has_hubspot_usage: boolean;
   latest_scan_signals: ScanSignal[] | null;
   last_scanned_at: string | null;
@@ -88,6 +89,9 @@ export function DashboardOverview({
 }: DashboardOverviewProps) {
   const activeRepositories = repositories.filter((repo) => repo.is_active_for_scanning);
   const hubSpotRepositories = repositories.filter((repo) => repo.has_hubspot_usage);
+  const watchedRepositories = repositories.filter(
+    (repo) => repo.monitoring_status === "watched",
+  );
   const criticalChangelogs = changelogEntries.filter(
     (entry) => entry.ai_severity_level === "red",
   );
@@ -100,7 +104,7 @@ export function DashboardOverview({
       id: "repositories" as const,
       title: "Connected Repositories",
       value: activeRepositories.length.toString(),
-      helper: `${hubSpotRepositories.length} with HubSpot signals`,
+      helper: `${watchedRepositories.length} watched, ${hubSpotRepositories.length} detected`,
       icon: Github,
     },
     {
@@ -205,6 +209,7 @@ function RepositoryPanel({ repositories }: { repositories: Repository[] }) {
                 </a>
                 <span>
                   {repo.is_active_for_scanning ? "Linked" : "Disconnected"} ·{" "}
+                  {formatMonitoringStatus(repo.monitoring_status)} ·{" "}
                   {repo.last_scanned_at
                     ? `Last scanned ${formatDate(repo.last_scanned_at)}`
                     : "Scan pending"}
@@ -401,7 +406,10 @@ function IssueCreateControl({
   repositories: Repository[];
 }) {
   const router = useRouter();
-  const activeRepositories = repositories.filter((repo) => repo.is_active_for_scanning);
+  const activeRepositories = repositories.filter(
+    (repo) =>
+      repo.is_active_for_scanning && repo.monitoring_status === "watched",
+  );
   const [selectedRepositoryIds, setSelectedRepositoryIds] = useState<string[]>([]);
   const [isCreatingIssue, setIsCreatingIssue] = useState(false);
   const [result, setResult] = useState<IssueCreationResult | null>(null);
@@ -456,7 +464,7 @@ function IssueCreateControl({
         <summary>{getRepositorySelectionLabel(selectedRepositories)}</summary>
         <div className={styles.repoOptionList}>
           {activeRepositories.length === 0 ? (
-            <span>No linked repositories</span>
+            <span>No watched repositories</span>
           ) : (
             activeRepositories.map((repo) => (
               <label key={repo.id}>
@@ -627,6 +635,18 @@ function formatDate(value: string) {
 
 function formatStatus(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function formatMonitoringStatus(value: Repository["monitoring_status"]) {
+  if (value === "watched") {
+    return "Watched";
+  }
+
+  if (value === "ignored") {
+    return "Ignored";
+  }
+
+  return "Needs review";
 }
 
 function formatClassification(value: string | null) {

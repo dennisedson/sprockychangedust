@@ -966,6 +966,41 @@ select {
   color: var(--muted);
 }
 
+.repoFilterTabs {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.repoFilterTab {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--muted-strong);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.repoFilterTab[data-active="true"] {
+  background: var(--primary-soft);
+  border-color: #ffd0c8;
+  color: var(--red);
+}
+
+.repoFilterTab strong {
+  color: inherit;
+  font-size: 12px;
+}
+
+.repoFilterTab span {
+  color: inherit;
+}
+
 .repoTable {
   overflow: hidden;
 }
@@ -998,7 +1033,7 @@ select {
   align-items: center;
   display: grid;
   gap: 18px;
-  grid-template-columns: 1.7fr 1.2fr 1.2fr 0.9fr 1.25fr 0.75fr;
+  grid-template-columns: 1.6fr 1.05fr 1.05fr 0.85fr 1.35fr 1.15fr 0.65fr;
   padding: 18px 26px;
 }
 
@@ -1017,6 +1052,7 @@ select {
 
 .repoName,
 .connectionCell,
+.monitoringCell,
 .repoActions,
 .toggleCell {
   align-items: center;
@@ -1058,6 +1094,10 @@ select {
 }
 
 .connectionCell {
+  flex-wrap: wrap;
+}
+
+.monitoringCell {
   flex-wrap: wrap;
 }
 
@@ -1294,7 +1334,7 @@ select {
 
   .repoTableHead,
   .repoRow {
-    min-width: 1120px;
+    min-width: 1320px;
   }
 }
 

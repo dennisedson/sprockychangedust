@@ -11,9 +11,11 @@ import {
 } from "@/lib/issues/trackedIssues";
 import {
   disconnectRepositoryAction,
+  ignoreRepositoryAction,
   reconnectRepositoryAction,
   scanAllRepositoriesAction,
   scanRepositoryAction,
+  watchRepositoryAction,
 } from "@/app/repositories/actions";
 import { env } from "@/lib/env";
 import { getGitHubInstallUrl } from "@/lib/github/app";
@@ -27,13 +29,25 @@ type RepositoryRow = {
   id: string;
   repo_name: string;
   is_active_for_scanning: boolean;
+  monitoring_status: MonitoringStatus;
   has_hubspot_usage: boolean;
   latest_scan_signals: ScanSignal[] | null;
   last_scanned_at: string | null;
   created_at: string;
 };
 
-type BaseRepositoryRow = Omit<RepositoryRow, "has_hubspot_usage" | "latest_scan_signals">;
+type MonitoringStatus = "pending" | "watched" | "ignored";
+type RepositoryFilter = "hubspot" | "ignored" | "all";
+type RepositoriesPageProps = {
+  searchParams?: Promise<{
+    filter?: string;
+  }>;
+};
+
+type BaseRepositoryRow = Omit<
+  RepositoryRow,
+  "has_hubspot_usage" | "latest_scan_signals" | "monitoring_status"
+>;
 
 async function getRepositories() {
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -44,12 +58,31 @@ async function getRepositories() {
   const { data, error } = await supabase
     .from("installed_repositories")
     .select(
-      "id,repo_name,is_active_for_scanning,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
+      "id,repo_name,is_active_for_scanning,monitoring_status,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
     )
     .order("created_at", { ascending: false })
     .returns<RepositoryRow[]>();
 
   if (error) {
+    if (isMissingMonitoringStatusColumnError(error)) {
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from("installed_repositories")
+        .select(
+          "id,repo_name,is_active_for_scanning,has_hubspot_usage,latest_scan_signals,last_scanned_at,created_at",
+        )
+        .order("created_at", { ascending: false })
+        .returns<Omit<RepositoryRow, "monitoring_status">[]>();
+
+      if (fallbackError) {
+        throw fallbackError;
+      }
+
+      return fallbackData.map((repo) => ({
+        ...repo,
+        monitoring_status: repo.has_hubspot_usage ? "watched" as const : "pending" as const,
+      }));
+    }
+
     if (isMissingRepositoryScanColumnError(error)) {
       const { data: fallbackData, error: fallbackError } = await supabase
         .from("installed_repositories")
@@ -63,6 +96,7 @@ async function getRepositories() {
 
       return fallbackData.map((repo) => ({
         ...repo,
+        monitoring_status: "watched" as const,
         has_hubspot_usage: false,
         latest_scan_signals: null,
       }));
@@ -74,8 +108,11 @@ async function getRepositories() {
   return data;
 }
 
-export default async function RepositoriesPage() {
+export default async function RepositoriesPage({ searchParams }: RepositoriesPageProps) {
+  const params = await searchParams;
+  const activeFilter = normalizeRepositoryFilter(params?.filter);
   const repositories = await getRepositories();
+  const visibleRepositories = filterRepositories(repositories, activeFilter);
   const trackedIssues = await listVisibleTrackedIssues();
 
   return (
@@ -102,7 +139,21 @@ export default async function RepositoriesPage() {
           <span className="sr-only">Search repositories</span>
           <input placeholder="Search repositories..." />
         </label>
-        <span>Showing {repositories.length} repositories</span>
+        <div className="repoFilterTabs" aria-label="Filter repositories">
+          {getRepositoryFilterOptions(repositories).map((option) => (
+            <a
+              aria-current={activeFilter === option.value ? "page" : undefined}
+              className="repoFilterTab"
+              data-active={activeFilter === option.value}
+              href={getRepositoryFilterHref(option.value)}
+              key={option.value}
+            >
+              <span>{option.label}</span>
+              <strong>{option.count}</strong>
+            </a>
+          ))}
+        </div>
+        <span>Showing {visibleRepositories.length} repositories</span>
       </section>
 
       {repositories.length === 0 ? (
@@ -118,6 +169,12 @@ export default async function RepositoriesPage() {
             Connect Repository
           </a>
         </section>
+      ) : visibleRepositories.length === 0 ? (
+        <section className="card emptyState">
+          <Github size={34} />
+          <h2>No repositories match this filter</h2>
+          <p>Switch filters to review connected, ignored, or detected HubSpot repositories.</p>
+        </section>
       ) : (
         <section className="card repoTable" aria-label="Connected repositories">
           <div className="repoTableHead">
@@ -125,10 +182,11 @@ export default async function RepositoriesPage() {
             <span>Connection</span>
             <span>Last Scanned</span>
             <span>HubSpot Usage</span>
+            <span>Monitoring</span>
             <span>Open Issues</span>
             <span>Actions</span>
           </div>
-          {repositories.map((repo) => (
+          {visibleRepositories.map((repo) => (
             <article className="repoRow" key={repo.id}>
               <div className="repoName">
                 <span className="repoIcon">
@@ -150,6 +208,7 @@ export default async function RepositoriesPage() {
               <ConnectionCell repository={repo} />
               <span>{formatLastScanned(repo.last_scanned_at)}</span>
               <ScanResultCell repository={repo} />
+              <MonitoringCell repository={repo} />
               <OpenIssuesCell repository={repo} trackedIssues={trackedIssues} />
               <div className="repoActions">
                 <form action={scanRepositoryAction}>
@@ -228,8 +287,133 @@ function ScanResultCell({ repository }: { repository: RepositoryRow }) {
   );
 }
 
+function MonitoringCell({ repository }: { repository: RepositoryRow }) {
+  if (!repository.has_hubspot_usage) {
+    return <span className="badge">No signal</span>;
+  }
+
+  if (repository.monitoring_status === "watched") {
+    return (
+      <div className="monitoringCell">
+        <span className="badge green">Watched</span>
+        <form action={ignoreRepositoryAction}>
+          <input name="repositoryId" type="hidden" value={repository.id} />
+          <RepositoryActionButton
+            disabled={!repository.is_active_for_scanning}
+            icon="ignore"
+            label="Ignore"
+            pendingLabel="Ignoring..."
+            size="small"
+            tone="danger"
+          />
+        </form>
+      </div>
+    );
+  }
+
+  if (repository.monitoring_status === "ignored") {
+    return (
+      <div className="monitoringCell">
+        <span className="badge">Ignored</span>
+        <form action={watchRepositoryAction}>
+          <input name="repositoryId" type="hidden" value={repository.id} />
+          <RepositoryActionButton
+            disabled={!repository.is_active_for_scanning}
+            icon="watch"
+            label="Watch & check"
+            pendingLabel="Checking..."
+            size="small"
+          />
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className="monitoringCell">
+      <span className="badge orange">Review</span>
+      <form action={watchRepositoryAction}>
+        <input name="repositoryId" type="hidden" value={repository.id} />
+        <RepositoryActionButton
+          disabled={!repository.is_active_for_scanning}
+          icon="watch"
+          label="Watch & check"
+          pendingLabel="Checking..."
+          size="small"
+        />
+      </form>
+      <form action={ignoreRepositoryAction}>
+        <input name="repositoryId" type="hidden" value={repository.id} />
+        <RepositoryActionButton
+          disabled={!repository.is_active_for_scanning}
+          icon="ignore"
+          label="Ignore"
+          pendingLabel="Ignoring..."
+          size="small"
+          tone="danger"
+        />
+      </form>
+    </div>
+  );
+}
+
+function filterRepositories(repositories: RepositoryRow[], activeFilter: RepositoryFilter) {
+  if (activeFilter === "all") {
+    return repositories;
+  }
+
+  if (activeFilter === "ignored") {
+    return repositories.filter((repository) => repository.monitoring_status === "ignored");
+  }
+
+  return repositories.filter(
+    (repository) =>
+      repository.has_hubspot_usage && repository.monitoring_status !== "ignored",
+  );
+}
+
+function getRepositoryFilterOptions(repositories: RepositoryRow[]) {
+  return [
+    {
+      label: "HubSpot related",
+      value: "hubspot" as const,
+      count: filterRepositories(repositories, "hubspot").length,
+    },
+    {
+      label: "Ignored",
+      value: "ignored" as const,
+      count: filterRepositories(repositories, "ignored").length,
+    },
+    {
+      label: "All",
+      value: "all" as const,
+      count: repositories.length,
+    },
+  ];
+}
+
+function getRepositoryFilterHref(filter: RepositoryFilter) {
+  return filter === "hubspot" ? "/repositories" : `/repositories?filter=${filter}`;
+}
+
+function normalizeRepositoryFilter(value: string | undefined): RepositoryFilter {
+  if (value === "ignored" || value === "all") {
+    return value;
+  }
+
+  return "hubspot";
+}
+
 function getGitHubRepositoryUrl(repositoryName: string) {
   return `https://github.com/${repositoryName}`;
+}
+
+function isMissingMonitoringStatusColumnError(error: { code?: string; message?: string }) {
+  return (
+    error.code === "42703" ||
+    error.message?.includes("monitoring_status") ||
+    false
+  );
 }
 
 function formatLastScanned(value: string | null) {

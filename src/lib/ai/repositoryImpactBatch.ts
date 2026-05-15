@@ -21,6 +21,7 @@ type RepositoryRow = {
   installation_id: number;
   repo_name: string;
   is_active_for_scanning: boolean;
+  monitoring_status: "pending" | "watched" | "ignored";
 };
 
 type ChangelogEntryRow = {
@@ -62,6 +63,11 @@ type BatchOutputLine = {
   };
 };
 
+type SupabaseError = {
+  code?: string;
+  message?: string;
+};
+
 export async function enqueueRepositoryImpactBatch(changelogEntryId: string) {
   const openai = getOpenAIClient();
 
@@ -70,25 +76,17 @@ export async function enqueueRepositoryImpactBatch(changelogEntryId: string) {
   }
 
   const supabase = createSupabaseAdminClient();
-  const [entryResult, repositoryResult] = await Promise.all([
+  const [entryResult, repositories] = await Promise.all([
     supabase
       .from("changelog_entries")
       .select("id,title,ai_summary,ai_severity_level,raw_content,migration_steps,impacted_keywords")
       .eq("id", changelogEntryId)
       .single<ChangelogEntryRow>(),
-    supabase
-      .from("installed_repositories")
-      .select("id,installation_id,repo_name,is_active_for_scanning")
-      .eq("is_active_for_scanning", true)
-      .returns<RepositoryRow[]>(),
+    getWatchedRepositoriesForBatch(),
   ]);
 
   if (entryResult.error) {
     throw entryResult.error;
-  }
-
-  if (repositoryResult.error) {
-    throw repositoryResult.error;
   }
 
   const requests: BatchRequestRecord[] = [];
@@ -103,7 +101,7 @@ export async function enqueueRepositoryImpactBatch(changelogEntryId: string) {
     impactedKeywords: entryResult.data.impacted_keywords || [],
   });
 
-  for (const repository of repositoryResult.data) {
+  for (const repository of repositories) {
     const scanResult = await scanInstalledRepository(repository);
     const impactInput: RepositoryImpactInput = {
       repositoryName: repository.repo_name,
@@ -328,6 +326,39 @@ export async function syncRepositoryImpactBatches() {
   return { processedJobs };
 }
 
+async function getWatchedRepositoriesForBatch() {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("installed_repositories")
+    .select("id,installation_id,repo_name,is_active_for_scanning,monitoring_status")
+    .eq("is_active_for_scanning", true)
+    .eq("monitoring_status", "watched")
+    .returns<RepositoryRow[]>();
+
+  if (!error) {
+    return data;
+  }
+
+  if (!isMissingMonitoringStatusColumnError(error)) {
+    throw error;
+  }
+
+  const { data: fallbackData, error: fallbackError } = await supabase
+    .from("installed_repositories")
+    .select("id,installation_id,repo_name,is_active_for_scanning")
+    .eq("is_active_for_scanning", true)
+    .returns<Omit<RepositoryRow, "monitoring_status">[]>();
+
+  if (fallbackError) {
+    throw fallbackError;
+  }
+
+  return fallbackData.map((repository) => ({
+    ...repository,
+    monitoring_status: "watched" as const,
+  }));
+}
+
 async function getCachedImpact(input: {
   changelogEntryId: string;
   installedRepositoryId: string;
@@ -345,6 +376,14 @@ async function getCachedImpact(input: {
   }
 
   return data;
+}
+
+function isMissingMonitoringStatusColumnError(error: SupabaseError) {
+  return (
+    error.code === "42703" ||
+    error.message?.includes("monitoring_status") ||
+    false
+  );
 }
 
 async function upsertRepositoryImpact(input: {
