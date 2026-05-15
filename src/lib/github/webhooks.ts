@@ -89,46 +89,58 @@ export async function handleGitHubInstallationWebhook(payload: InstallationPaylo
   const removedRepositories = payload.repositories_removed || [];
   const accountLogin = payload.installation.account?.login || "unknown";
 
-  await upsertInstallation({
+  const previousStatus = await upsertInstallation({
     installationId: payload.installation.id,
     accountLogin,
     isDeleted: payload.action === "deleted",
   });
 
+  if (payload.action === "deleted") {
+    await deleteRepositoriesForInstallation(payload.installation.id);
+    return;
+  }
+
   if (repositories.length > 0) {
+    if (previousStatus === "deleted") {
+      await deleteRepositoriesByGithubRepoIds(repositories.map((repository) => repository.id));
+    }
+
     await upsertRepositories({
       installationId: payload.installation.id,
       repositories,
-      isActiveForScanning: payload.action !== "deleted",
+      isActiveForScanning: true,
     });
 
-    if (payload.action !== "deleted") {
-      await scanInstalledRepositoriesByGithubRepoIds(
-        repositories.map((repository) => repository.id),
-        { limit: initialScanLimit },
-      );
-    }
+    await scanInstalledRepositoriesByGithubRepoIds(
+      repositories.map((repository) => repository.id),
+      { limit: initialScanLimit },
+    );
   }
 
   if (removedRepositories.length > 0) {
-    await upsertRepositories({
-      installationId: payload.installation.id,
-      repositories: removedRepositories,
-      isActiveForScanning: false,
-    });
+    await deleteRepositoriesByGithubRepoIds(
+      removedRepositories.map((repository) => repository.id),
+    );
   }
 }
 
 export async function handleGitHubRepositoryWebhook(payload: RepositoryWebhookPayload) {
   const accountLogin =
     payload.installation.account?.login || payload.repository.owner?.login || "unknown";
-  const isInactive = ["deleted", "archived", "transferred"].includes(payload.action);
 
   await upsertInstallation({
     installationId: payload.installation.id,
     accountLogin,
     isDeleted: false,
   });
+
+  if (["deleted", "transferred"].includes(payload.action)) {
+    await deleteRepositoriesByGithubRepoIds([payload.repository.id]);
+    return;
+  }
+
+  const isInactive = payload.action === "archived";
+
   await upsertRepositories({
     installationId: payload.installation.id,
     repositories: [payload.repository],
@@ -184,11 +196,16 @@ export async function syncInstallationRepositories(
   const repositories = await listInstallationRepositories(installationId);
   const runInitialScan = options.runInitialScan ?? true;
 
-  await upsertInstallation({
+  const previousStatus = await upsertInstallation({
     installationId,
     accountLogin: "unknown",
     isDeleted: false,
   });
+
+  if (previousStatus === "deleted") {
+    await deleteRepositoriesByGithubRepoIds(repositories.map((repository) => repository.id));
+  }
+
   await upsertRepositories({
     installationId,
     repositories,
@@ -211,8 +228,17 @@ async function upsertInstallation(input: {
   isDeleted: boolean;
 }) {
   const supabase = createSupabaseAdminClient();
+  const { data: existingInstallation, error: lookupError } = await supabase
+    .from("github_app_installations")
+    .select("status")
+    .eq("installation_id", input.installationId)
+    .maybeSingle<{ status: "active" | "deleted" }>();
 
-  await supabase.from("github_app_installations").upsert(
+  if (lookupError) {
+    throw lookupError;
+  }
+
+  const { error } = await supabase.from("github_app_installations").upsert(
     {
       installation_id: input.installationId,
       github_account_login: input.accountLogin,
@@ -220,6 +246,12 @@ async function upsertInstallation(input: {
     },
     { onConflict: "installation_id" },
   );
+
+  if (error) {
+    throw error;
+  }
+
+  return existingInstallation?.status || null;
 }
 
 async function upsertRepositories(input: {
@@ -228,7 +260,12 @@ async function upsertRepositories(input: {
   isActiveForScanning: boolean;
 }) {
   const supabase = createSupabaseAdminClient();
-  await supabase.from("installed_repositories").upsert(
+  await deleteRepositoriesForOtherInstallations({
+    installationId: input.installationId,
+    githubRepoIds: input.repositories.map((repository) => repository.id),
+  });
+
+  const { error } = await supabase.from("installed_repositories").upsert(
     input.repositories.map((repository) => ({
       installation_id: input.installationId,
       github_repo_id: repository.id,
@@ -238,4 +275,72 @@ async function upsertRepositories(input: {
     })),
     { onConflict: "github_repo_id" },
   );
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function deleteRepositoriesForOtherInstallations(input: {
+  installationId: number;
+  githubRepoIds: number[];
+}) {
+  if (input.githubRepoIds.length === 0) {
+    return;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: existingRepositories, error: lookupError } = await supabase
+    .from("installed_repositories")
+    .select("id, installation_id")
+    .in("github_repo_id", input.githubRepoIds);
+
+  if (lookupError) {
+    throw lookupError;
+  }
+
+  const staleRepositoryIds = (existingRepositories || [])
+    .filter((repository) => repository.installation_id !== input.installationId)
+    .map((repository) => repository.id);
+
+  if (staleRepositoryIds.length === 0) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("installed_repositories")
+    .delete()
+    .in("id", staleRepositoryIds);
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function deleteRepositoriesForInstallation(installationId: number) {
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("installed_repositories")
+    .delete()
+    .eq("installation_id", installationId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function deleteRepositoriesByGithubRepoIds(githubRepoIds: number[]) {
+  if (githubRepoIds.length === 0) {
+    return;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("installed_repositories")
+    .delete()
+    .in("github_repo_id", githubRepoIds);
+
+  if (error) {
+    throw error;
+  }
 }

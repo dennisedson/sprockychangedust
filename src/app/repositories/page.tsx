@@ -703,7 +703,7 @@ function normalizeInstallationId(value: string | undefined) {
 
 function isNewRepository(value: string) {
   const createdAt = new Date(value).getTime();
-  const fiveMinutesMs = 5 * 60 * 1000;
+  const newRepositoryWindowMs = 30 * 60 * 1000;
 
-  return Number.isFinite(createdAt) && Date.now() - createdAt < fiveMinutesMs;
+  return Number.isFinite(createdAt) && Date.now() - createdAt < newRepositoryWindowMs;
 }
