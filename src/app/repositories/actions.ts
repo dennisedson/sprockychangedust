@@ -7,6 +7,7 @@ import {
   scanInstalledRepositories,
   scanInstalledRepositoryById,
 } from "@/lib/scanner/scanInstalledRepository";
+import { removeInstalledRepositoryFromGitHubAndDatabase } from "@/lib/repositories/removeRepository";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type MonitoringStatus = "pending" | "watched" | "ignored";
@@ -42,16 +43,7 @@ export async function removeRepositoryAction(formData: FormData) {
     return;
   }
 
-  const supabase = createSupabaseAdminClient();
-  const { error } = await supabase
-    .from("installed_repositories")
-    .delete()
-    .eq("id", repositoryId);
-
-  if (error) {
-    throw error;
-  }
-
+  await removeInstalledRepositoryFromGitHubAndDatabase(repositoryId);
   revalidatePath("/dashboard");
   revalidatePath("/repositories");
 }

@@ -1,3 +1,4 @@
+// @workflow_state: REVIEW
 import { z } from "zod";
 
 const optionalString = z.preprocess((value) => (value === "" ? undefined : value), z.string().optional());
@@ -15,6 +16,7 @@ const envSchema = z.object({
   GITHUB_APP_PRIVATE_KEY: optionalString,
   GITHUB_WEBHOOK_SECRET: optionalString,
   GITHUB_APP_INSTALL_URL: optionalUrl,
+  GITHUB_APP_MANAGEMENT_TOKEN: optionalString,
   CRON_SECRET: optionalString,
   HUBSPOT_CHANGELOG_FEED_URL: z
     .string()

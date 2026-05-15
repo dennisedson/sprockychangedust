@@ -1,4 +1,5 @@
 // @workflow_state: REVIEW
+import { env } from "@/lib/env";
 import { createGitHubApp } from "@/lib/github/app";
 import type { RepositoryFile } from "@/lib/scanner/types";
 
@@ -62,6 +63,16 @@ export type GitHubInstallationRepository = {
   private: boolean;
 };
 
+export class GitHubInstallationRepositoryRemovalError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "GitHubInstallationRepositoryRemovalError";
+    this.status = status;
+  }
+}
+
 export async function getInstallationOctokit(installationId: number) {
   const app = createGitHubApp();
   return app.getInstallationOctokit(installationId);
@@ -116,6 +127,49 @@ export async function listInstallationRepositories(
   return repositories;
 }
 
+export async function removeRepositoryFromInstallation(input: {
+  installationId: number;
+  githubRepositoryId: number;
+}) {
+  if (!env.GITHUB_APP_MANAGEMENT_TOKEN) {
+    throw new GitHubInstallationRepositoryRemovalError(
+      "GitHub removal needs GITHUB_APP_MANAGEMENT_TOKEN, a classic PAT with repo scope from a repository admin.",
+    );
+  }
+
+  const response = await fetch(
+    `https://api.github.com/user/installations/${input.installationId}/repositories/${input.githubRepositoryId}`,
+    {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${env.GITHUB_APP_MANAGEMENT_TOKEN}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      method: "DELETE",
+    },
+  );
+
+  if (response.status === 204) {
+    return;
+  }
+
+  if (response.status === 404) {
+    const repositories = await listInstallationRepositories(input.installationId);
+    const isAlreadyRemoved = repositories.every(
+      (repository) => repository.id !== input.githubRepositoryId,
+    );
+
+    if (isAlreadyRemoved) {
+      return;
+    }
+  }
+
+  throw new GitHubInstallationRepositoryRemovalError(
+    await getRepositoryRemovalErrorMessage(response),
+    response.status,
+  );
+}
+
 export async function getRepositoryDefaultBranch(input: {
   installationId: number;
   owner: string;
@@ -128,6 +182,24 @@ export async function getRepositoryDefaultBranch(input: {
   });
 
   return response.data.default_branch;
+}
+
+async function getRepositoryRemovalErrorMessage(response: Response) {
+  if (response.status === 403) {
+    return "GitHub refused the removal. Confirm GITHUB_APP_MANAGEMENT_TOKEN is a classic PAT with repo scope and admin access to this repository.";
+  }
+
+  if (response.status === 422) {
+    return "GitHub could not remove this repository. The app may be installed on all repositories, or this may be the last selected repository.";
+  }
+
+  const body = await response.text();
+
+  if (!body) {
+    return `GitHub repository removal failed with status ${response.status}.`;
+  }
+
+  return `GitHub repository removal failed with status ${response.status}: ${body}`;
 }
 
 async function fetchPath(

@@ -3,6 +3,7 @@ import { ExternalLink, Github, Plus, Search } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { IssueAutoRefresh } from "@/components/issues/IssueAutoRefresh";
 import { RepositoryActionButton } from "@/components/repositories/RepositoryActionButton";
+import { RepositoryRemoveButton } from "@/components/repositories/RepositoryRemoveButton";
 import { RepositoryUsageModal } from "@/components/repositories/RepositoryUsageModal";
 import { SuggestedIssueCreateButton } from "@/components/repositories/SuggestedIssueCreateButton";
 import {
@@ -13,7 +14,6 @@ import {
   disconnectRepositoryAction,
   ignoreRepositoryAction,
   reconnectRepositoryAction,
-  removeRepositoryAction,
   scanAllRepositoriesAction,
   scanRepositoryAction,
   watchRepositoryAction,
@@ -374,18 +374,7 @@ function RepositoryActionsCell({ repository }: { repository: RepositoryRow }) {
           tone={repository.is_active_for_scanning ? "danger" : "default"}
         />
       </form>
-      <form action={removeRepositoryAction}>
-        <input name="repositoryId" type="hidden" value={repository.id} />
-        <RepositoryActionButton
-          confirmMessage={`Remove ${repository.repo_name} from Sprocky? This deletes its scan results and tracked issue records from this app.`}
-          icon="remove"
-          iconOnly
-          label="Remove from app"
-          pendingLabel="Removing..."
-          size="small"
-          tone="danger"
-        />
-      </form>
+      <RepositoryRemoveButton repositoryId={repository.id} repositoryName={repository.repo_name} />
     </div>
   );
 }
