@@ -624,6 +624,12 @@ select {
   padding: 10px 12px;
 }
 
+.formStatus[data-tone="success"] {
+  background: #eaf7ef;
+  border-color: #bae5c8;
+  color: var(--green);
+}
+
 .saveStatus {
   background: #eaf7ef;
   border: 1px solid #bae5c8;
