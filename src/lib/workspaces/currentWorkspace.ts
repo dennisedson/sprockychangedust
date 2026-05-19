@@ -199,10 +199,33 @@ async function createPersonalWorkspace(user: CurrentUser) {
     .single<WorkspaceRow>();
 
   if (error) {
+    if (isUniqueViolationError(error)) {
+      const existingWorkspaceId = await getExistingPersonalWorkspaceId(user);
+
+      if (existingWorkspaceId) {
+        return existingWorkspaceId;
+      }
+    }
+
     throw error;
   }
 
   return data.id;
+}
+
+async function getExistingPersonalWorkspaceId(user: CurrentUser) {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("workspaces")
+    .select("id")
+    .eq("personal_owner_user_id", user.id)
+    .maybeSingle<WorkspaceRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data?.id || null;
 }
 
 async function adoptUnownedInstallations(context: CurrentWorkspaceContext) {
@@ -290,4 +313,8 @@ function isMissingWorkspaceColumnError(error: SupabaseError) {
     error.message?.includes("workspace_id") ||
     false
   );
+}
+
+function isUniqueViolationError(error: SupabaseError) {
+  return error.code === "23505";
 }
