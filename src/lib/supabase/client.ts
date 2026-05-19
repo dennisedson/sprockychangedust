@@ -2,8 +2,8 @@
 import { createBrowserClient } from "@supabase/ssr";
 
 export function createClientSupabaseClient() {
-  const supabaseUrl = getBrowserEnvValue("NEXT_PUBLIC_SUPABASE_URL");
-  const supabaseAnonKey = getBrowserEnvValue("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const supabaseUrl = normalizeBrowserEnvValue(process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const supabaseAnonKey = normalizeBrowserEnvValue(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error(
@@ -20,8 +20,8 @@ export function createClientSupabaseClient() {
   );
 }
 
-function getBrowserEnvValue(name: "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_ANON_KEY") {
-  return process.env[name]?.trim().replace(/^['"]|['"]$/g, "").replace(/\s+/g, "");
+function normalizeBrowserEnvValue(value: string | undefined) {
+  return value?.trim().replace(/^['"]|['"]$/g, "").replace(/\s+/g, "");
 }
 
 function validateSupabaseUrl(value: string) {
